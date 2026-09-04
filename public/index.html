@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Milkie Torrent Scraper SPA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#09090b',
+                            800: '#18181b',
+                            700: '#27272a',
+                            600: '#3f3f46'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-dark-900 text-zinc-100 min-h-screen font-sans flex flex-col justify-between selection:bg-zinc-700 selection:text-white">
+
+    <!-- Header -->
+    <header class="border-b border-zinc-800 bg-dark-800/50 backdrop-blur sticky top-0 z-10 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-lg font-semibold tracking-tight text-zinc-100">Milkie Scraper SPA</h1>
+            <span class="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">Last 7 Days Top 20</span>
+        </div>
+        <button id="refresh-btn" onclick="fetchListings()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-md border border-zinc-700 transition flex items-center space-x-2">
+            <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <span>Fetch Listings</span>
+        </button>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- TV Shows Box -->
+        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col h-[70vh] shadow-xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-dark-800/80">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <h2 class="font-medium text-zinc-200">TV Shows (Top 20 Downloaded)</h2>
+                </div>
+                <span id="tv-count" class="text-xs text-zinc-500">0 items</span>
+            </div>
+            <div id="tv-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-3">
+                <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
+                    Click "Fetch Listings" to load data from milkie.cc
+                </div>
+            </div>
+        </section>
+
+        <!-- Movies Box -->
+        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col h-[70vh] shadow-xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-dark-800/80">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                    <h2 class="font-medium text-zinc-200">Movies (Top 20 Downloaded)</h2>
+                </div>
+                <span id="movie-count" class="text-xs text-zinc-500">0 items</span>
+            </div>
+            <div id="movie-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-3">
+                <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
+                    Click "Fetch Listings" to load data from milkie.cc
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+        <!-- Error Box Footer -->
+    <footer class="border-t border-zinc-800 bg-black/80 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex flex-col space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-mono uppercase tracking-wider text-zinc-400">Raw Error Log / Stack Trace & Session Config</span>
+                <div class="flex items-center space-x-3">
+                    <button onclick="saveApiKeyModal()" class="text-xs text-emerald-400 hover:underline">Set Torrent API Key</button>
+                    <button onclick="saveCookieModal()" class="text-xs text-blue-400 hover:underline">Set Token</button>
+                    <button onclick="clearErrors()" class="text-xs text-zinc-500 hover:text-zinc-300 underline">Clear Log</button>
+                </div>
+            </div>
+            <div id="error-box" class="bg-dark-900 border border-zinc-800 rounded p-3 font-mono text-xs text-red-400 h-28 overflow-y-auto whitespace-pre-wrap">No errors recorded.</div>
+        </div>
+    </footer>
+
+    <!-- API Key Modal -->
+    <div id="apikey-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-lg w-full p-6 flex flex-col space-y-4 shadow-2xl">
+            <h3 class="text-lg font-semibold text-zinc-100">Configure Torrent API Key</h3>
+            <p class="text-xs text-zinc-400">Enter your Milkie API key (e.g. <code class="text-zinc-300">PASTE_YOUR_KEY_HERE</code>) so direct download links function correctly:</p>
+            <input type="text" id="apikey-input" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-emerald-500" placeholder="PASTE_YOUR_KEY_HERE" />
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeApiKeyModal()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
+                <button onclick="submitApiKey()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cookie Modal -->
+    <div id="cookie-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-lg w-full p-6 flex flex-col space-y-4 shadow-2xl">
+            <h3 class="text-lg font-semibold text-zinc-100">Configure Browser Cookie / Token</h3>
+            <p class="text-xs text-zinc-400">If automated login is blocked by Cloudflare or authentication requirements, you can paste your browser session cookie header (e.g. <code class="text-zinc-300">connect.sid=...</code> or session token) below:</p>
+            <textarea id="cookie-input" rows="3" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-blue-500" placeholder="connect.sid=s%3A..."></textarea>
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeCookieModal()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
+                <button onclick="submitCookie()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition">Save & Fetch</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function logError(err) {
+            const errorBox = document.getElementById('error-box');
+            const timestamp = new Date().toISOString();
+            const logEntry = `[${timestamp}]\n${typeof err === 'string' ? err : (err.stack || err.message || JSON.stringify(err))}\n\n`;
+            if (errorBox.textContent === 'No errors recorded.') {
+                errorBox.textContent = logEntry;
+            } else {
+                errorBox.textContent += logEntry;
+            }
+            errorBox.scrollTop = errorBox.scrollHeight;
+        }
+
+        function clearErrors() {
+            document.getElementById('error-box').textContent = 'No errors recorded.';
+        }
+
+        function renderList(containerId, countId, items) {
+            const container = document.getElementById(containerId);
+            const countSpan = document.getElementById(countId);
+            container.innerHTML = '';
+            countSpan.textContent = `${items.length} items`;
+
+            if (items.length === 0) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">No torrents found within the last 7 days.</div>';
+                return;
+            }
+
+            items.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md p-3 transition flex flex-col space-y-2';
+                
+                card.innerHTML = `
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-start space-x-2.5 overflow-hidden">
+                            <span class="text-xs font-mono text-zinc-500 mt-0.5">#${index + 1}</span>
+                            <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate">${item.title}</a>
+                        </div>
+                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg></a>` : ''}
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-zinc-400 pt-1 border-t border-zinc-800/40">
+                        <div class="flex items-center space-x-3">
+                            <span class="flex items-center space-x-1 text-emerald-400 font-medium" title="Amount Downloaded">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
+                                <span>${item.downloaded} Dl</span>
+                            </span>
+                            <span class="text-zinc-600">|</span>
+                            <span class="text-zinc-400" title="Seeders">S: ${item.seeders}</span>
+                            <span class="text-zinc-600">|</span>
+                            <span class="text-zinc-400" title="Leechers">L: ${item.leechers}</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-zinc-500">${item.size}</span>
+                            <span class="text-zinc-600">|</span>
+                            <span class="text-zinc-500" title="${item.createdAt}">${item.createdAt}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function saveCookieModal() {
+            const modal = document.getElementById('cookie-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function saveApiKeyModal() {
+            const modal = document.getElementById('apikey-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeApiKeyModal() {
+            const modal = document.getElementById('apikey-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        async function submitApiKey() {
+            const keyVal = document.getElementById('apikey-input').value.trim();
+            closeApiKeyModal();
+            const btn = document.getElementById('refresh-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+
+            try {
+                const res = await fetch('/api/set-apikey', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey: keyVal })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to set API key');
+                await fetchListings();
+            } catch (err) {
+                logError(err);
+                btn.disabled = false;
+                btn.classList.add('opacity-50');
+            }
+        }
+
+        function closeCookieModal() {
+            const modal = document.getElementById('cookie-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        async function submitCookie() {
+            const cookieVal = document.getElementById('cookie-input').value.trim();
+            closeCookieModal();
+            const btn = document.getElementById('refresh-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+
+            try {
+                const res = await fetch('/api/set-cookie', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cookie: cookieVal })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to set token');
+                await fetchListings();
+            } catch (err) {
+                logError(err);
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
+        }
+
+        async function fetchListings() {
+            const btn = document.getElementById('refresh-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+
+            try {
+                const res = await fetch('/api/scrape');
+                const data = await res.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Unknown scraper error');
+                }
+
+                renderList('tv-container', 'tv-count', data.tvShows);
+                renderList('movie-container', 'movie-count', data.movies);
+            } catch (err) {
+                logError(err);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
+        }
+
+        // Auto load on start
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchListings();
+        });
+    </script>
+</body>
+</html>
