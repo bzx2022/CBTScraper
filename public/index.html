@@ -40,11 +40,11 @@
         </button>
     </header>
 
-    <!-- Main Content Grid -->
-    <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+    <!-- Main Content Stack -->
+    <main class="flex-1 w-[60%] mx-auto p-6 flex flex-col gap-6">
+
         <!-- TV Shows Box -->
-        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col h-[70vh] shadow-xl overflow-hidden">
+        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col h-[70vh] w-full shadow-xl overflow-hidden">
             <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-dark-800/80">
                 <div class="flex items-center space-x-2">
                     <span class="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -52,7 +52,7 @@
                 </div>
                 <span id="tv-count" class="text-xs text-zinc-500">0 items</span>
             </div>
-            <div id="tv-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-3">
+            <div id="tv-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-2">
                 <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
                     Click "Fetch Listings" to load data from milkie.cc
                 </div>
@@ -60,7 +60,7 @@
         </section>
 
         <!-- Movies Box -->
-        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col h-[70vh] shadow-xl overflow-hidden">
+        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col h-[70vh] w-full shadow-xl overflow-hidden">
             <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-dark-800/80">
                 <div class="flex items-center space-x-2">
                     <span class="w-2 h-2 rounded-full bg-purple-500"></span>
@@ -68,9 +68,25 @@
                 </div>
                 <span id="movie-count" class="text-xs text-zinc-500">0 items</span>
             </div>
-            <div id="movie-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-3">
+            <div id="movie-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-2">
                 <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
                     Click "Fetch Listings" to load data from milkie.cc
+                </div>
+            </div>
+        </section>
+
+        <!-- Watchlist Box -->
+        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col max-h-[50vh] w-full shadow-xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-dark-800/80">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <h2 class="font-medium text-zinc-200">Watchlist</h2>
+                </div>
+                <span id="watchlist-count" class="text-xs text-zinc-500">0 shows</span>
+            </div>
+            <div id="watchlist-container" class="flex-1 overflow-y-auto p-4 space-y-2">
+                <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
+                    No shows in watchlist yet. Use + on a TV show to add it.
                 </div>
             </div>
         </section>
@@ -79,7 +95,7 @@
 
         <!-- Error Box Footer -->
     <footer class="border-t border-zinc-800 bg-black/80 px-6 py-4">
-        <div class="max-w-7xl mx-auto flex flex-col space-y-2">
+        <div class="w-[60%] mx-auto flex flex-col space-y-2">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-mono uppercase tracking-wider text-zinc-400">Raw Error Log / Stack Trace & Session Config</span>
                 <div class="flex items-center space-x-3">
@@ -148,36 +164,108 @@
 
             items.forEach((item, index) => {
                 const card = document.createElement('div');
-                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md p-3 transition flex flex-col space-y-2';
-                
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition flex items-center gap-3 whitespace-nowrap overflow-hidden text-xs';
+
+                const addBtn = (containerId === 'tv-container')
+                    ? `<button onclick="addToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-emerald-700 text-zinc-300 hover:text-white transition shrink-0 text-xs font-bold">+</button>`
+                    : '';
+
                 card.innerHTML = `
-                    <div class="flex items-start justify-between gap-2">
-                        <div class="flex items-start space-x-2.5 overflow-hidden">
-                            <span class="text-xs font-mono text-zinc-500 mt-0.5">#${index + 1}</span>
-                            <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate">${item.title}</a>
-                        </div>
-                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg></a>` : ''}
-                    </div>
-                    <div class="flex items-center justify-between text-xs text-zinc-400 pt-1 border-t border-zinc-800/40">
-                        <div class="flex items-center space-x-3">
-                            <span class="flex items-center space-x-1 text-emerald-400 font-medium" title="Amount Downloaded">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
-                                <span>${item.downloaded} Dl</span>
-                            </span>
-                            <span class="text-zinc-600">|</span>
-                            <span class="text-zinc-400" title="Seeders">S: ${item.seeders}</span>
-                            <span class="text-zinc-600">|</span>
-                            <span class="text-zinc-400" title="Leechers">L: ${item.leechers}</span>
-                        </div>
-                        <div class="flex items-center space-x-3">
-                            <span class="text-zinc-500">${item.size}</span>
-                            <span class="text-zinc-600">|</span>
-                            <span class="text-zinc-500" title="${item.createdAt}">${item.createdAt}</span>
-                        </div>
-                    </div>
+                    <span class="text-xs font-mono text-zinc-500 shrink-0 w-7">#${index + 1}</span>
+                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                    <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-400 shrink-0" title="Seeders">S: ${item.seeders}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-400 shrink-0" title="Leechers">L: ${item.leechers}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-500 shrink-0">${item.size}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-500 shrink-0 hidden xl:inline" title="${item.createdAt}">${item.createdAt}</span>
+                    ${addBtn}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg></a>` : ''}
                 `;
                 container.appendChild(card);
             });
+        }
+
+        let lastTvShows = [];
+
+        function renderWatchlist(list) {
+            const container = document.getElementById('watchlist-container');
+            const countSpan = document.getElementById('watchlist-count');
+            container.innerHTML = '';
+            countSpan.textContent = `${list.length} shows`;
+            if (list.length === 0) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">No shows in watchlist yet. Use + on a TV show to add it.</div>';
+                return;
+            }
+            list.forEach((entry) => {
+                const card = document.createElement('div');
+                card.className = 'bg-dark-900/50 border border-zinc-800/80 rounded-md px-3 py-2 flex items-center gap-3 text-xs whitespace-nowrap overflow-hidden';
+                const badge = entry.hasNew
+                    ? `<span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-semibold shrink-0">New Episode Found${entry.latest ? ` S${String(entry.latest.season).padStart(2, '0')}E${String(entry.latest.episode).padStart(2, '0')}` : ''}</span>`
+                    : `<span class="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[11px] shrink-0">S${String(entry.season).padStart(2, '0')}E${String(entry.episode).padStart(2, '0')}</span>`;
+                const dlInfo = entry.downloadedFile ? `<span class="text-zinc-500 truncate" title="${entry.downloadedFile}">&#8595; ${entry.downloadedFile.split(/[\\/]/).pop()}</span>` : '';
+                const dlErr = entry.downloadError ? `<span class="text-red-400 truncate" title="${entry.downloadError}">dl failed</span>` : '';
+                card.innerHTML = `
+                    <span class="text-sm font-medium text-zinc-100 truncate flex-1 min-w-0" title="${entry.displayName}">${entry.displayName}</span>
+                    ${badge}
+                    ${dlInfo}${dlErr}
+                    ${entry.hasNew ? `<button onclick="ackWatchlist('${entry.id}')" title="Mark as watched" class="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white transition shrink-0 text-[11px]">Mark watched</button>` : ''}
+                    <button onclick="removeFromWatchlist('${entry.id}')" title="Remove from watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-red-700 text-zinc-300 hover:text-white transition shrink-0 text-[11px]">Remove</button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function fetchWatchlist() {
+            try {
+                const res = await fetch('/api/watchlist');
+                const data = await res.json();
+                if (data.success) renderWatchlist(data.watchlist);
+            } catch (err) {
+                logError(err);
+            }
+        }
+
+        async function addToWatchlist(index) {
+            const item = lastTvShows[index];
+            if (!item) return;
+            try {
+                const res = await fetch('/api/watchlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: item.title, torrentId: item.torrentId })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to add to watchlist');
+                await fetchWatchlist();
+            } catch (err) {
+                logError(err);
+            }
+        }
+
+        async function removeFromWatchlist(id) {
+            try {
+                const res = await fetch(`/api/watchlist/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to remove');
+                await fetchWatchlist();
+            } catch (err) {
+                logError(err);
+            }
+        }
+
+        async function ackWatchlist(id) {
+            try {
+                const res = await fetch(`/api/watchlist/${id}/ack`, { method: 'POST' });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to acknowledge');
+                await fetchWatchlist();
+            } catch (err) {
+                logError(err);
+            }
         }
 
         function saveCookieModal() {
@@ -200,6 +288,7 @@
 
         async function submitApiKey() {
             const keyVal = document.getElementById('apikey-input').value.trim();
+            if (keyVal) localStorage.setItem('milkie_apiKey', keyVal);
             closeApiKeyModal();
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
@@ -229,6 +318,7 @@
 
         async function submitCookie() {
             const cookieVal = document.getElementById('cookie-input').value.trim();
+            if (cookieVal) localStorage.setItem('milkie_token', cookieVal);
             closeCookieModal();
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
@@ -263,8 +353,11 @@
                     throw new Error(data.error || 'Unknown scraper error');
                 }
 
+                lastTvShows = data.tvShows || [];
                 renderList('tv-container', 'tv-count', data.tvShows);
                 renderList('movie-container', 'movie-count', data.movies);
+                if (data.watchlist) renderWatchlist(data.watchlist);
+                else await fetchWatchlist();
             } catch (err) {
                 logError(err);
             } finally {
@@ -273,9 +366,44 @@
             }
         }
 
-        // Auto load on start
-        window.addEventListener('DOMContentLoaded', () => {
+        // Auto-restore saved credentials then load listings
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const savedToken = localStorage.getItem('milkie_token') || '';
+                const savedKey = localStorage.getItem('milkie_apiKey') || '';
+                if (savedToken) document.getElementById('cookie-input').value = savedToken;
+                if (savedKey) document.getElementById('apikey-input').value = savedKey;
+
+                // Sync with server-saved config (covers server restarts / fresh browsers)
+                const cfgRes = await fetch('/api/config');
+                const cfg = await cfgRes.json();
+                if (cfg.success) {
+                    if (cfg.token) {
+                        localStorage.setItem('milkie_token', cfg.token);
+                        document.getElementById('cookie-input').value = cfg.token;
+                    } else if (savedToken) {
+                        await fetch('/api/set-cookie', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ cookie: savedToken })
+                        });
+                    }
+                    if (cfg.apiKey) {
+                        localStorage.setItem('milkie_apiKey', cfg.apiKey);
+                        document.getElementById('apikey-input').value = cfg.apiKey;
+                    } else if (savedKey) {
+                        await fetch('/api/set-apikey', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ apiKey: savedKey })
+                        });
+                    }
+                }
+            } catch (err) {
+                logError(err);
+            }
             fetchListings();
+            fetchWatchlist();
         });
     </script>
 </body>
