@@ -1,0 +1,8 @@
+Install instructions (elevated PowerShell):
+
+cd "E:\My Documents\Default Project\rss-bridge"
+npm install
+node install-service.js   # registers + starts MilkieRSSBridge
+
+Then in uTorrent 2.2.1 add RSS feed http://127.0.0.1:8080/feed.xml. To remove: node uninstall-service.js from the same elevated prompt.
+
