@@ -4104,3 +4104,4 @@ rss-bridge/node_modules/yargs-parser/build/lib/tokenize-arg-string.js
 rss-bridge/node_modules/yargs-parser/build/lib/yargs-parser-types.js
 rss-bridge/node_modules/yargs-parser/build/lib/yargs-parser.js
 rss-bridge/daemon/milkierssbridge.out.log
+config.json

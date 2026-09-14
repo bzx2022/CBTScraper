@@ -100,6 +100,7 @@
                 <span class="text-xs font-mono uppercase tracking-wider text-zinc-400">Raw Error Log / Stack Trace & Session Config</span>
                 <div class="flex items-center space-x-3">
                     <button onclick="saveApiKeyModal()" class="text-xs text-emerald-400 hover:underline">Set Torrent API Key</button>
+                    <button onclick="saveOmdbModal()" class="text-xs text-amber-400 hover:underline">Set OMDb Key</button>
                     <button onclick="saveCookieModal()" class="text-xs text-blue-400 hover:underline">Set Token</button>
                     <button onclick="clearErrors()" class="text-xs text-zinc-500 hover:text-zinc-300 underline">Clear Log</button>
                 </div>
@@ -117,6 +118,19 @@
             <div class="flex justify-end space-x-3">
                 <button onclick="closeApiKeyModal()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
                 <button onclick="submitApiKey()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OMDb Key Modal -->
+    <div id="omdb-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-lg w-full p-6 flex flex-col space-y-4 shadow-2xl">
+            <h3 class="text-lg font-semibold text-zinc-100">Configure OMDb API Key</h3>
+            <p class="text-xs text-zinc-400">Enter your free OMDb API key (from omdbapi.com) to enable IMDb ratings and genres on listings. Ratings are cached for 7 days:</p>
+            <input type="text" id="omdb-input" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-amber-500" placeholder="e.g. a1b2c3d4" />
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeOmdbModal()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
+                <button onclick="submitOmdbKey()" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded transition">Save & Apply</button>
             </div>
         </div>
     </div>
@@ -162,28 +176,52 @@
                 return;
             }
 
+            function escapeHtml(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            }
+
+            function metaLine(meta) {
+                if (!meta || (!meta.rating && (!meta.genres || meta.genres.length === 0))) {
+                    return '<div class="text-[11px] text-zinc-600 truncate">rating / genres unavailable</div>';
+                }
+                const ratingHtml = meta.rating
+                    ? (meta.imdbUrl
+                        ? `<a href="${meta.imdbUrl}" target="_blank" title="Open on IMDb" class="text-amber-400 hover:underline font-medium">&#9733; ${escapeHtml(meta.rating)}</a>`
+                        : `<span class="text-amber-400 font-medium">&#9733; ${escapeHtml(meta.rating)}</span>`)
+                    : '<span class="text-zinc-600">no rating</span>';
+                const genresHtml = (meta.genres && meta.genres.length > 0)
+                    ? `<span class="text-zinc-500">${escapeHtml(meta.genres.join(', '))}</span>`
+                    : '';
+                return `<div class="text-[11px] truncate">${ratingHtml}${genresHtml ? ` <span class="text-zinc-600">·</span> ${genresHtml}` : ''}</div>`;
+            }
+
             items.forEach((item, index) => {
                 const card = document.createElement('div');
-                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition flex items-center gap-3 whitespace-nowrap overflow-hidden text-xs';
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition text-xs';
 
                 const addBtn = (containerId === 'tv-container')
                     ? `<button onclick="addToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-emerald-700 text-zinc-300 hover:text-white transition shrink-0 text-xs font-bold">+</button>`
                     : '';
 
                 card.innerHTML = `
-                    <span class="text-xs font-mono text-zinc-500 shrink-0 w-7">#${index + 1}</span>
-                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
-                    <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
-                    <span class="text-zinc-600 shrink-0">|</span>
-                    <span class="text-zinc-400 shrink-0" title="Seeders">S: ${item.seeders}</span>
-                    <span class="text-zinc-600 shrink-0">|</span>
-                    <span class="text-zinc-400 shrink-0" title="Leechers">L: ${item.leechers}</span>
-                    <span class="text-zinc-600 shrink-0">|</span>
-                    <span class="text-zinc-500 shrink-0">${item.size}</span>
-                    <span class="text-zinc-600 shrink-0">|</span>
-                    <span class="text-zinc-500 shrink-0 hidden xl:inline" title="${item.createdAt}">${item.createdAt}</span>
-                    ${addBtn}
-                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg></a>` : ''}
+                    <div class="flex items-center gap-3 whitespace-nowrap overflow-hidden">
+                        <span class="text-xs font-mono text-zinc-500 shrink-0 w-7">#${index + 1}</span>
+                        <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                        <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
+                        <span class="text-zinc-600 shrink-0">|</span>
+                        <span class="text-zinc-400 shrink-0" title="Seeders">S: ${item.seeders}</span>
+                        <span class="text-zinc-600 shrink-0">|</span>
+                        <span class="text-zinc-400 shrink-0" title="Leechers">L: ${item.leechers}</span>
+                        <span class="text-zinc-600 shrink-0">|</span>
+                        <span class="text-zinc-500 shrink-0">${item.size}</span>
+                        <span class="text-zinc-600 shrink-0">|</span>
+                        <span class="text-zinc-500 shrink-0 hidden xl:inline" title="${item.createdAt}">${item.createdAt}</span>
+                        ${addBtn}
+                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m4 4V4"></path></svg></a>` : ''}
+                    </div>
+                    <div class="pl-10 pr-1 pt-0.5">${metaLine(item.meta)}</div>
                 `;
                 container.appendChild(card);
             });
@@ -310,6 +348,42 @@
             }
         }
 
+        function saveOmdbModal() {
+            const modal = document.getElementById('omdb-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeOmdbModal() {
+            const modal = document.getElementById('omdb-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        async function submitOmdbKey() {
+            const keyVal = document.getElementById('omdb-input').value.trim();
+            if (keyVal) localStorage.setItem('milkie_omdbKey', keyVal);
+            closeOmdbModal();
+            const btn = document.getElementById('refresh-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+
+            try {
+                const res = await fetch('/api/set-omdbkey', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ omdbKey: keyVal })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to set OMDb key');
+                await fetchListings();
+            } catch (err) {
+                logError(err);
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
+        }
+
         function closeCookieModal() {
             const modal = document.getElementById('cookie-modal');
             modal.classList.remove('flex');
@@ -371,8 +445,10 @@
             try {
                 const savedToken = localStorage.getItem('milkie_token') || '';
                 const savedKey = localStorage.getItem('milkie_apiKey') || '';
+                const savedOmdb = localStorage.getItem('milkie_omdbKey') || '';
                 if (savedToken) document.getElementById('cookie-input').value = savedToken;
                 if (savedKey) document.getElementById('apikey-input').value = savedKey;
+                if (savedOmdb) document.getElementById('omdb-input').value = savedOmdb;
 
                 // Sync with server-saved config (covers server restarts / fresh browsers)
                 const cfgRes = await fetch('/api/config');
@@ -396,6 +472,16 @@
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ apiKey: savedKey })
+                        });
+                    }
+                    if (cfg.omdbKey) {
+                        localStorage.setItem('milkie_omdbKey', cfg.omdbKey);
+                        document.getElementById('omdb-input').value = cfg.omdbKey;
+                    } else if (savedOmdb) {
+                        await fetch('/api/set-omdbkey', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ omdbKey: savedOmdb })
                         });
                     }
                 }

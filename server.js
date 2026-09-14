@@ -116,6 +116,124 @@ async function checkWatchlist(tvItems) {
     if (changed) saveWatchlist();
 }
 
+let omdbApiKey = '';
+
+// Weekly metadata cache: key -> { rating, genres, imdbID, imdbUrl, fetchedAt }
+const META_CACHE_PATH = path.join(__dirname, 'ratings-cache.json');
+const META_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+let metaCache = {};
+
+function loadMetaCache() {
+    try {
+        if (fs.existsSync(META_CACHE_PATH)) {
+            const parsed = JSON.parse(fs.readFileSync(META_CACHE_PATH, 'utf8'));
+            if (parsed && typeof parsed === 'object') metaCache = parsed;
+        }
+    } catch (err) {
+        console.error('Failed to load ratings cache:', err.message);
+        metaCache = {};
+    }
+}
+
+function saveMetaCache() {
+    try {
+        fs.writeFileSync(META_CACHE_PATH, JSON.stringify(metaCache, null, 2), 'utf8');
+    } catch (err) {
+        console.error('Failed to save ratings cache:', err.message);
+    }
+}
+
+// Parse "Movie.Name.2024.1080p.WEB.H264-GROUP" -> { query, year }
+function parseMovieTitle(releaseName) {
+    if (!releaseName) return null;
+    const yearMatch = releaseName.match(/\b(19|20)\d{2}\b/);
+    const year = yearMatch ? yearMatch[0] : null;
+    // Title is everything before the year (or before the first quality tag).
+    let head = year ? releaseName.slice(0, yearMatch.index) : releaseName.split(/[._-](1080p|2160p|720p|480p|WEB|BluRay|HDTV|HDCAM|HC|HDRip|BRRip)/i)[0];
+    head = head.replace(/[._]+/g, ' ').replace(/-+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    if (!head) return null;
+    return { query: head, year };
+}
+
+function metaCacheKey(kind, name, year) {
+    return `${kind}|${name.toLowerCase()}|${year || ''}`;
+}
+
+async function fetchOmdb(query, year, type) {
+    const params = new URLSearchParams({ apikey: omdbApiKey, t: query, type });
+    if (year) params.append('y', year);
+    // OMDb is HTTP-friendly and keyless-safe; short timeout via AbortController.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+        const res = await fetch(`https://www.omdbapi.com/?${params.toString()}`, {
+            headers: { Accept: 'application/json' },
+            signal: ctrl.signal
+        });
+        if (!res.ok) throw new Error(`OMDb status ${res.status}`);
+        const data = await res.json();
+        if (!data || data.Response !== 'True') throw new Error(data && data.Error ? data.Error : 'Not found');
+        const genres = data.Genre && data.Genre !== 'N/A'
+            ? data.Genre.split(',').map(g => g.trim()).filter(Boolean)
+            : [];
+        return {
+            rating: data.imdbRating && data.imdbRating !== 'N/A' ? data.imdbRating : null,
+            genres,
+            imdbID: data.imdbID || null,
+            imdbUrl: data.imdbID ? `https://www.imdb.com/title/${data.imdbID}/` : null
+        };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// Resolve metadata for one item, using the weekly cache. Never throws.
+async function resolveMeta(kind, name, year) {
+    const key = metaCacheKey(kind, name, year);
+    const cached = metaCache[key];
+    if (cached && (Date.now() - (cached.fetchedAt || 0)) < META_CACHE_TTL_MS) {
+        return cached;
+    }
+    if (!omdbApiKey) return cached || null;
+    try {
+        const fresh = await fetchOmdb(name, year, kind === 'series' ? 'series' : 'movie');
+        metaCache[key] = { ...fresh, fetchedAt: Date.now() };
+        saveMetaCache();
+        return metaCache[key];
+    } catch (err) {
+        console.error(`Metadata lookup failed [${kind}] "${name}": ${err.message}`);
+        return cached || null;
+    }
+}
+
+// Enrich already-sliced top items with rating/genres (concurrency-limited).
+async function enrichWithMeta(items, kind) {
+    const CONCURRENCY = 4;
+    const queue = items.slice();
+    async function worker() {
+        while (queue.length > 0) {
+            const item = queue.shift();
+            let name = null;
+            let year = null;
+            if (kind === 'series') {
+                const p = parseRelease(item.title);
+                if (p) name = p.displayName;
+            } else {
+                const p = parseMovieTitle(item.title);
+                if (p) {
+                    name = p.query;
+                    year = p.year;
+                }
+            }
+            item.meta = name ? await resolveMeta(kind, name, year) : null;
+            // Gentle pacing so we stay far under OMDb's free quota.
+            await new Promise(r => setTimeout(r, 250));
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
+    return items;
+}
+
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
@@ -123,7 +241,8 @@ function loadConfig() {
             const cfg = JSON.parse(raw);
             if (cfg.sessionToken) sessionToken = cfg.sessionToken;
             if (cfg.torrentApiKey) torrentApiKey = cfg.torrentApiKey;
-            console.log(`Loaded saved config (token: ${sessionToken ? 'yes' : 'no'}, apiKey: ${torrentApiKey ? 'yes' : 'no'})`);
+            if (cfg.omdbApiKey) omdbApiKey = cfg.omdbApiKey;
+            console.log(`Loaded saved config (token: ${sessionToken ? 'yes' : 'no'}, apiKey: ${torrentApiKey ? 'yes' : 'no'}, omdb: ${omdbApiKey ? 'yes' : 'no'})`);
         }
     } catch (err) {
         console.error('Failed to load config.json:', err.message);
@@ -132,7 +251,7 @@ function loadConfig() {
 
 function saveConfig() {
     try {
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify({ sessionToken, torrentApiKey }, null, 2), 'utf8');
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify({ sessionToken, torrentApiKey, omdbApiKey }, null, 2), 'utf8');
     } catch (err) {
         console.error('Failed to save config.json:', err.message);
     }
@@ -140,6 +259,7 @@ function saveConfig() {
 
 loadConfig();
 loadWatchlist();
+loadMetaCache();
 
 // Scrape function for category (1 = Movies, 2 = TV Shows)
 async function scrapeCategory(categoryId) {
@@ -204,9 +324,11 @@ async function scrapeCategory(categoryId) {
         }
     }
 
-    // Sort by amount downloaded descending, pick top 20
+    // Sort by amount downloaded descending, pick top 20, then enrich with ratings.
     items.sort((a, b) => b.downloaded - a.downloaded);
-    return items.slice(0, 20);
+    const top = items.slice(0, 20);
+    await enrichWithMeta(top, categoryId === 2 ? 'series' : 'movie');
+    return top;
 }
 
 // API endpoint to set manual token (auto-saved to config.json)
@@ -233,9 +355,30 @@ app.post('/api/set-apikey', (req, res) => {
     }
 });
 
+// API endpoint to set OMDb API key (auto-saved to config.json)
+// Extract a bare key from raw input (accepts a pasted OMDb sample URL too).
+function normalizeOmdbKey(input) {
+    const s = String(input || '').trim();
+    if (!s) return '';
+    const m = s.match(/[?&]apikey=([^&\s]+)/i);
+    if (m) return m[1].trim();
+    return s;
+}
+
+app.post('/api/set-omdbkey', (req, res) => {
+    const omdbKey = normalizeOmdbKey(req.body && req.body.omdbKey);
+    if (omdbKey) {
+        omdbApiKey = omdbKey;
+        saveConfig();
+        res.json({ success: true });
+    } else {
+        res.status(400).json({ success: false, error: 'OMDb key string is required' });
+    }
+});
+
 // API endpoint to retrieve saved credentials (local-only app)
 app.get('/api/config', (req, res) => {
-    res.json({ success: true, token: sessionToken, apiKey: torrentApiKey });
+    res.json({ success: true, token: sessionToken, apiKey: torrentApiKey, omdbKey: omdbApiKey });
 });
 
 // Watchlist endpoints
