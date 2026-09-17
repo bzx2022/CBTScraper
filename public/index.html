@@ -22,6 +22,12 @@
             }
         }
     </script>
+    <style>
+        .acc-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-in-out; }
+        .acc-icon { transition: transform 0.3s ease; }
+        .acc-open .acc-icon { transform: rotate(180deg); }
+        .acc-open .acc-heading { color: #e4e4e7; }
+    </style>
 </head>
 <body class="bg-dark-900 text-zinc-100 min-h-screen font-sans flex flex-col justify-between selection:bg-zinc-700 selection:text-white">
 
@@ -32,12 +38,27 @@
             <h1 class="text-lg font-semibold tracking-tight text-zinc-100">Milkie Scraper SPA</h1>
             <span class="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">Last 7 Days Top 20</span>
         </div>
-        <button id="refresh-btn" onclick="fetchListings()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-md border border-zinc-700 transition flex items-center space-x-2">
-            <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg>
-            <span>Fetch Listings</span>
-        </button>
+        <div class="flex items-center space-x-2">
+            <button id="watchlist-btn" onclick="openWatchlist()" title="Watchlist" class="relative p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md border border-zinc-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+                </svg>
+                <span id="watchlist-badge" class="hidden absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-semibold flex items-center justify-center" title="Shows tracked">0</span>
+            </button>
+            <button id="settings-btn" onclick="openSettings()" title="Settings" class="relative p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md border border-zinc-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                <span id="settings-dot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500" title="Errors logged"></span>
+            </button>
+            <button id="refresh-btn" onclick="fetchListings()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-md border border-zinc-700 transition flex items-center space-x-2">
+                <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <span>Fetch Listings</span>
+            </button>
+        </div>
     </header>
 
     <!-- Main Content Stack -->
@@ -75,75 +96,115 @@
             </div>
         </section>
 
-        <!-- Watchlist Box -->
-        <section class="bg-dark-800 border border-zinc-800 rounded-lg flex flex-col max-h-[50vh] w-full shadow-xl overflow-hidden">
-            <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-dark-800/80">
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeSettings()">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-2xl w-full p-6 flex flex-col space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-zinc-100">Settings</h3>
+                <button onclick="closeSettings()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <!-- Auth Token section -->
+            <div id="acc-token" class="border border-zinc-700 rounded-md overflow-hidden">
+                <button onclick="toggleSettingsSection('acc-token')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
+                    <span class="acc-heading text-sm font-medium text-zinc-300">Auth Token</span>
+                    <span class="flex items-center space-x-2">
+                        <span id="status-token" class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">Not set</span>
+                        <svg class="acc-icon w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </button>
+                <div class="acc-body">
+                    <div class="px-4 pb-4 flex flex-col space-y-3">
+                        <p class="text-xs text-zinc-400">Paste your milkie.cc bearer token (DevTools → Network → <code class="text-zinc-300">authorization</code> header):</p>
+                        <textarea id="cookie-input" rows="3" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-blue-500" placeholder="eyJhbGciOi..."></textarea>
+                        <div class="flex justify-end">
+                            <button onclick="submitCookie()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition">Save & Fetch</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Torrent API Key section -->
+            <div id="acc-apikey" class="border border-zinc-700 rounded-md overflow-hidden">
+                <button onclick="toggleSettingsSection('acc-apikey')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
+                    <span class="acc-heading text-sm font-medium text-zinc-300">Torrent API Key</span>
+                    <span class="flex items-center space-x-2">
+                        <span id="status-apikey" class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">Not set</span>
+                        <svg class="acc-icon w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </button>
+                <div class="acc-body">
+                    <div class="px-4 pb-4 flex flex-col space-y-3">
+                        <p class="text-xs text-zinc-400">Your Milkie API key, appended to direct <code class="text-zinc-300">.torrent</code> download links:</p>
+                        <input type="text" id="apikey-input" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-emerald-500" placeholder="PASTE_YOUR_KEY_HERE" />
+                        <div class="flex justify-end">
+                            <button onclick="submitApiKey()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition">Save & Apply</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OMDb Key section -->
+            <div id="acc-omdb" class="border border-zinc-700 rounded-md overflow-hidden">
+                <button onclick="toggleSettingsSection('acc-omdb')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
+                    <span class="acc-heading text-sm font-medium text-zinc-300">OMDb Key</span>
+                    <span class="flex items-center space-x-2">
+                        <span id="status-omdb" class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">Not set</span>
+                        <svg class="acc-icon w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </button>
+                <div class="acc-body">
+                    <div class="px-4 pb-4 flex flex-col space-y-3">
+                        <p class="text-xs text-zinc-400">Free key from omdbapi.com — enables IMDb ratings and genres (cached 7 days):</p>
+                        <input type="text" id="omdb-input" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-amber-500" placeholder="e.g. a1b2c3d4" />
+                        <div class="flex justify-end">
+                            <button onclick="submitOmdbKey()" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded transition">Save & Apply</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Log section -->
+            <div id="acc-errors" class="border border-zinc-700 rounded-md overflow-hidden">
+                <button onclick="toggleSettingsSection('acc-errors')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
+                    <span class="acc-heading text-sm font-medium text-zinc-300">Error Log</span>
+                    <span class="flex items-center space-x-2">
+                        <button onclick="event.stopPropagation(); clearErrors()" class="text-[11px] text-zinc-500 hover:text-zinc-300 underline">Clear</button>
+                        <svg class="acc-icon w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </button>
+                <div class="acc-body">
+                    <div class="px-4 pb-4">
+                        <div id="error-box" class="bg-dark-900 border border-zinc-800 rounded p-3 font-mono text-xs text-red-400 h-36 overflow-y-auto whitespace-pre-wrap">No errors recorded.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Watchlist Modal -->
+    <div id="watchlist-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeWatchlist()">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg w-[60%] p-6 flex flex-col space-y-3 shadow-2xl max-h-[90vh] overflow-hidden">
+            <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2">
                     <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <h2 class="font-medium text-zinc-200">Watchlist</h2>
+                    <h3 class="text-lg font-semibold text-zinc-100">Watchlist</h3>
                 </div>
-                <span id="watchlist-count" class="text-xs text-zinc-500">0 shows</span>
+                <div class="flex items-center space-x-3">
+                    <span id="watchlist-count" class="text-xs text-zinc-500">0 shows</span>
+                    <button onclick="closeWatchlist()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
             </div>
-            <div id="watchlist-container" class="flex-1 overflow-y-auto p-4 space-y-2">
+            <div id="watchlist-container" class="flex-1 overflow-y-auto space-y-2 min-h-[10rem]">
                 <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
                     No shows in watchlist yet. Use + on a TV show to add it.
                 </div>
-            </div>
-        </section>
-
-    </main>
-
-        <!-- Error Box Footer -->
-    <footer class="border-t border-zinc-800 bg-black/80 px-6 py-4">
-        <div class="w-[60%] mx-auto flex flex-col space-y-2">
-            <div class="flex items-center justify-between">
-                <span class="text-xs font-mono uppercase tracking-wider text-zinc-400">Raw Error Log / Stack Trace & Session Config</span>
-                <div class="flex items-center space-x-3">
-                    <button onclick="saveApiKeyModal()" class="text-xs text-emerald-400 hover:underline">Set Torrent API Key</button>
-                    <button onclick="saveOmdbModal()" class="text-xs text-amber-400 hover:underline">Set OMDb Key</button>
-                    <button onclick="saveCookieModal()" class="text-xs text-blue-400 hover:underline">Set Token</button>
-                    <button onclick="clearErrors()" class="text-xs text-zinc-500 hover:text-zinc-300 underline">Clear Log</button>
-                </div>
-            </div>
-            <div id="error-box" class="bg-dark-900 border border-zinc-800 rounded p-3 font-mono text-xs text-red-400 h-28 overflow-y-auto whitespace-pre-wrap">No errors recorded.</div>
-        </div>
-    </footer>
-
-    <!-- API Key Modal -->
-    <div id="apikey-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-        <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-lg w-full p-6 flex flex-col space-y-4 shadow-2xl">
-            <h3 class="text-lg font-semibold text-zinc-100">Configure Torrent API Key</h3>
-            <p class="text-xs text-zinc-400">Enter your Milkie API key (e.g. <code class="text-zinc-300">PASTE_YOUR_KEY_HERE</code>) so direct download links function correctly:</p>
-            <input type="text" id="apikey-input" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-emerald-500" placeholder="PASTE_YOUR_KEY_HERE" />
-            <div class="flex justify-end space-x-3">
-                <button onclick="closeApiKeyModal()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
-                <button onclick="submitApiKey()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition">Save & Apply</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- OMDb Key Modal -->
-    <div id="omdb-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-        <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-lg w-full p-6 flex flex-col space-y-4 shadow-2xl">
-            <h3 class="text-lg font-semibold text-zinc-100">Configure OMDb API Key</h3>
-            <p class="text-xs text-zinc-400">Enter your free OMDb API key (from omdbapi.com) to enable IMDb ratings and genres on listings. Ratings are cached for 7 days:</p>
-            <input type="text" id="omdb-input" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-amber-500" placeholder="e.g. a1b2c3d4" />
-            <div class="flex justify-end space-x-3">
-                <button onclick="closeOmdbModal()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
-                <button onclick="submitOmdbKey()" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded transition">Save & Apply</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Cookie Modal -->
-    <div id="cookie-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-        <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-lg w-full p-6 flex flex-col space-y-4 shadow-2xl">
-            <h3 class="text-lg font-semibold text-zinc-100">Configure Browser Cookie / Token</h3>
-            <p class="text-xs text-zinc-400">If automated login is blocked by Cloudflare or authentication requirements, you can paste your browser session cookie header (e.g. <code class="text-zinc-300">connect.sid=...</code> or session token) below:</p>
-            <textarea id="cookie-input" rows="3" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-blue-500" placeholder="connect.sid=s%3A..."></textarea>
-            <div class="flex justify-end space-x-3">
-                <button onclick="closeCookieModal()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
-                <button onclick="submitCookie()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition">Save & Fetch</button>
             </div>
         </div>
     </div>
@@ -159,10 +220,69 @@
                 errorBox.textContent += logEntry;
             }
             errorBox.scrollTop = errorBox.scrollHeight;
+            document.getElementById('settings-dot').classList.remove('hidden');
         }
 
         function clearErrors() {
             document.getElementById('error-box').textContent = 'No errors recorded.';
+            document.getElementById('settings-dot').classList.add('hidden');
+        }
+
+        function openSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            refreshSettingsStatus();
+        }
+
+        function closeSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function toggleSettingsSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            const body = section.querySelector('.acc-body');
+            const isOpen = section.classList.contains('acc-open');
+            if (isOpen) {
+                section.classList.remove('acc-open');
+                body.style.maxHeight = '0px';
+            } else {
+                section.classList.add('acc-open');
+                body.style.maxHeight = body.scrollHeight + 'px';
+            }
+        }
+
+        function setStatusBadge(badgeId, isSet) {
+            const badge = document.getElementById(badgeId);
+            badge.textContent = isSet ? 'Set' : 'Not set';
+            badge.className = isSet
+                ? 'text-[11px] px-2 py-0.5 rounded bg-emerald-900 text-emerald-300'
+                : 'text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400';
+        }
+
+        function refreshSettingsStatus() {
+            setStatusBadge('status-token', !!document.getElementById('cookie-input').value.trim());
+            setStatusBadge('status-apikey', !!document.getElementById('apikey-input').value.trim());
+            setStatusBadge('status-omdb', !!document.getElementById('omdb-input').value.trim());
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { closeSettings(); closeWatchlist(); }
+        });
+
+        function openWatchlist() {
+            const modal = document.getElementById('watchlist-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            fetchWatchlist();
+        }
+
+        function closeWatchlist() {
+            const modal = document.getElementById('watchlist-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
         }
 
         function renderList(containerId, countId, items) {
@@ -234,6 +354,13 @@
             const countSpan = document.getElementById('watchlist-count');
             container.innerHTML = '';
             countSpan.textContent = `${list.length} shows`;
+            const badge = document.getElementById('watchlist-badge');
+            badge.textContent = list.length;
+            badge.classList.toggle('hidden', list.length === 0);
+            const newCount = list.filter((e) => e.hasNew).length;
+            badge.classList.toggle('bg-amber-500', newCount > 0);
+            badge.classList.toggle('bg-emerald-600', newCount === 0);
+            badge.title = newCount > 0 ? `${newCount} new episode(s) found` : 'Shows tracked';
             if (list.length === 0) {
                 container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">No shows in watchlist yet. Use + on a TV show to add it.</div>';
                 return;
@@ -306,28 +433,10 @@
             }
         }
 
-        function saveCookieModal() {
-            const modal = document.getElementById('cookie-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function saveApiKeyModal() {
-            const modal = document.getElementById('apikey-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function closeApiKeyModal() {
-            const modal = document.getElementById('apikey-modal');
-            modal.classList.remove('flex');
-            modal.classList.add('hidden');
-        }
-
         async function submitApiKey() {
             const keyVal = document.getElementById('apikey-input').value.trim();
             if (keyVal) localStorage.setItem('milkie_apiKey', keyVal);
-            closeApiKeyModal();
+            refreshSettingsStatus();
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             btn.classList.add('opacity-50');
@@ -348,22 +457,10 @@
             }
         }
 
-        function saveOmdbModal() {
-            const modal = document.getElementById('omdb-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function closeOmdbModal() {
-            const modal = document.getElementById('omdb-modal');
-            modal.classList.remove('flex');
-            modal.classList.add('hidden');
-        }
-
         async function submitOmdbKey() {
             const keyVal = document.getElementById('omdb-input').value.trim();
             if (keyVal) localStorage.setItem('milkie_omdbKey', keyVal);
-            closeOmdbModal();
+            refreshSettingsStatus();
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             btn.classList.add('opacity-50');
@@ -384,16 +481,10 @@
             }
         }
 
-        function closeCookieModal() {
-            const modal = document.getElementById('cookie-modal');
-            modal.classList.remove('flex');
-            modal.classList.add('hidden');
-        }
-
         async function submitCookie() {
             const cookieVal = document.getElementById('cookie-input').value.trim();
             if (cookieVal) localStorage.setItem('milkie_token', cookieVal);
-            closeCookieModal();
+            refreshSettingsStatus();
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             btn.classList.add('opacity-50');
@@ -488,6 +579,7 @@
             } catch (err) {
                 logError(err);
             }
+            refreshSettingsStatus();
             fetchListings();
             fetchWatchlist();
         });

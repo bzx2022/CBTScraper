@@ -57,6 +57,36 @@ function isNewer(aSeason, aEp, bSeason, bEp) {
     return aEp > bEp;
 }
 
+function releaseTag(season, episode) {
+    return `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+}
+
+function isProperRelease(title) {
+    return /\b(PROPER|REPACK)\b/i.test(title || '');
+}
+
+// True if this exact episode was already downloaded, unless the candidate is
+// a PROPER/REPACK upgrade we haven't grabbed yet. Prevents re-downloading
+// the same S/E on every scrape while still allowing proper upgrades.
+function alreadyDownloaded(entry, season, episode, title) {
+    const tag = releaseTag(season, episode);
+    const prior = (entry.downloadedReleases || []).filter(r => r.tag === tag);
+    if (prior.length === 0) return false;
+    const proper = isProperRelease(title);
+    if (proper && !prior.some(r => r.proper)) return false;
+    return true;
+}
+
+function recordDownload(entry, season, episode, title) {
+    entry.downloadedReleases = entry.downloadedReleases || [];
+    entry.downloadedReleases.push({
+        tag: releaseTag(season, episode),
+        title,
+        proper: isProperRelease(title),
+        downloadedAt: new Date().toISOString()
+    });
+}
+
 function buildAuthHeaders() {
     const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -82,10 +112,21 @@ async function downloadTorrentFile(torrentId, releaseName) {
     return dest;
 }
 
+// One-time migration for entries flagged before the download log existed:
+// treat the last successfully downloaded release as already-downloaded so it
+// is not grabbed once more just to seed the log.
+function seedDownloadLog(entry) {
+    if ((entry.downloadedReleases || []).length > 0) return false;
+    if (entry.downloadError || !entry.downloadedFile || !entry.latest || !entry.latest.title) return false;
+    recordDownload(entry, entry.latest.season, entry.latest.episode, entry.latest.title);
+    return true;
+}
+
 // Compare scraped TV items against watchlist; flag + auto-download newer episodes
 async function checkWatchlist(tvItems) {
     let changed = false;
     for (const entry of watchlist) {
+        if (seedDownloadLog(entry)) changed = true;
         const candidates = [];
         for (const item of tvItems) {
             const p = parseRelease(item.title);
@@ -93,9 +134,11 @@ async function checkWatchlist(tvItems) {
                 candidates.push({ parsed: p, item });
             }
         }
-        if (candidates.length > 0) {
-            candidates.sort((a, b) => (a.parsed.season - b.parsed.season) || (a.parsed.episode - b.parsed.episode));
-            const best = candidates[candidates.length - 1];
+        // Drop episodes already downloaded (same S/E), except PROPER/REPACK upgrades.
+        const fresh = candidates.filter(c => !alreadyDownloaded(entry, c.parsed.season, c.parsed.episode, c.item.title));
+        if (fresh.length > 0) {
+            fresh.sort((a, b) => (a.parsed.season - b.parsed.season) || (a.parsed.episode - b.parsed.episode));
+            const best = fresh[fresh.length - 1];
             entry.hasNew = true;
             entry.latest = {
                 season: best.parsed.season,
@@ -107,6 +150,7 @@ async function checkWatchlist(tvItems) {
             try {
                 entry.downloadedFile = await downloadTorrentFile(best.item.torrentId, best.item.title);
                 entry.downloadError = null;
+                recordDownload(entry, best.parsed.season, best.parsed.episode, best.item.title);
             } catch (err) {
                 entry.downloadError = err.message;
             }
@@ -405,7 +449,8 @@ app.post('/api/watchlist', (req, res) => {
         hasNew: false,
         latest: null,
         downloadedFile: null,
-        downloadError: null
+        downloadError: null,
+        downloadedReleases: []
     };
     watchlist.push(entry);
     saveWatchlist();

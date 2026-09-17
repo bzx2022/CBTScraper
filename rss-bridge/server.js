@@ -77,6 +77,36 @@ function isNewer(aSeason, aEp, bSeason, bEp) {
   return aEp > bEp;
 }
 
+function releaseTag(season, episode) {
+  return `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+}
+
+function isProperRelease(title) {
+  return /\b(PROPER|REPACK)\b/i.test(title || '');
+}
+
+// Same dedup policy as the SPA: skip S/E already downloaded, except a
+// PROPER/REPACK upgrade not yet grabbed. The tracked S/E only advances on
+// user acknowledge, so without this log every poll would re-download.
+function alreadyDownloaded(entry, season, episode, title) {
+  const tag = releaseTag(season, episode);
+  const prior = (entry.downloadedReleases || []).filter((r) => r.tag === tag);
+  if (prior.length === 0) return false;
+  const proper = isProperRelease(title);
+  if (proper && !prior.some((r) => r.proper)) return false;
+  return true;
+}
+
+function recordDownload(entry, season, episode, title) {
+  entry.downloadedReleases = entry.downloadedReleases || [];
+  entry.downloadedReleases.push({
+    tag: releaseTag(season, episode),
+    title,
+    proper: isProperRelease(title),
+    downloadedAt: new Date().toISOString(),
+  });
+}
+
 function readJsonSafe(p, fallback) {
   try {
     if (!fs.existsSync(p)) return fallback;
@@ -131,17 +161,25 @@ async function pollWatchlistOnce() {
     let watchlistChanged = false;
     for (const entry of watchlist) {
       if (!entry || !entry.seriesKey) continue;
-      let best = null;
+      // One-time migration for entries flagged before the download log existed.
+      if ((entry.downloadedReleases || []).length === 0 && !entry.downloadError && entry.downloadedFile && entry.latest && entry.latest.title) {
+        recordDownload(entry, entry.latest.season, entry.latest.episode, entry.latest.title);
+        watchlistChanged = true;
+      }
+      const candidates = [];
       for (const t of tvItems) {
         const title = t.releaseName || t.title || t.name;
         const p = parseRelease(title);
         if (p && p.seriesKey === entry.seriesKey && isNewer(p.season, p.episode, entry.season, entry.episode)) {
-          if (!best || isNewer(p.season, p.episode, best.parsed.season, best.parsed.episode)) {
-            best = { parsed: p, raw: t, title };
+          // Per-episode dedup: skip S/E already downloaded, unless PROPER/REPACK.
+          if (!alreadyDownloaded(entry, p.season, p.episode, title)) {
+            candidates.push({ parsed: p, raw: t, title });
           }
         }
       }
-      if (!best) continue;
+      if (candidates.length === 0) continue;
+      candidates.sort((a, b) => a.parsed.season - b.parsed.season || a.parsed.episode - b.parsed.episode);
+      const best = candidates[candidates.length - 1];
       // Anti-loop: skip if this exact release already sits in torrents/ or archive/.
       const safeName = `${best.title.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 150)}.torrent`;
       if (fs.existsSync(path.join(TORRENT_DIR, safeName)) || fs.existsSync(path.join(ARCHIVE_DIR, safeName))) {
@@ -169,6 +207,7 @@ async function pollWatchlistOnce() {
       };
       entry.downloadedFile = path.join(TORRENT_DIR, safeName);
       entry.downloadError = null;
+      recordDownload(entry, best.parsed.season, best.parsed.episode, best.title);
       watchlistChanged = true;
     }
     if (watchlistChanged) {
