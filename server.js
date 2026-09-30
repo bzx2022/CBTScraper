@@ -140,6 +140,7 @@ async function checkWatchlist(tvItems) {
             fresh.sort((a, b) => (a.parsed.season - b.parsed.season) || (a.parsed.episode - b.parsed.episode));
             const best = fresh[fresh.length - 1];
             entry.hasNew = true;
+            entry.newDetectedAt = new Date().toISOString();
             entry.latest = {
                 season: best.parsed.season,
                 episode: best.parsed.episode,
@@ -341,29 +342,8 @@ async function scrapeCategory(categoryId) {
             const createdAtStr = t.createdAt || t.created_at || t.date || '';
             const createdAtTime = createdAtStr ? new Date(createdAtStr).getTime() : Date.now();
 
-            const title = t.releaseName || t.title || t.name || 'Unknown';
-            const releaser = t.group || '';
-            const fullTitle = releaser && !title.includes(releaser) ? `${title}-${releaser}` : title;
-
             if (createdAtTime >= sevenDaysAgo || !createdAtStr) {
-                let dlUrl = t.id ? `https://milkie.cc/api/v1/torrents/${t.id}/torrent` : '';
-                if (torrentApiKey && dlUrl) {
-                    const cleanKey = torrentApiKey.replace(/^key=/, '');
-                    dlUrl += `?key=${cleanKey}`;
-                }
-
-                items.push({
-                    title: fullTitle,
-                    torrentId: t.id || null,
-                    href: t.slug ? `/browse/${t.slug}` : (t.id ? `/browse/${t.id}` : '#'),
-                    downloadUrl: dlUrl,
-                    createdAt: createdAtStr,
-                    createdAtTime,
-                    size: t.size ? (typeof t.size === 'number' ? `${(t.size / (1024*1024*1024)).toFixed(2)} GiB` : t.size) : 'N/A',
-                    downloaded: t.downloaded || t.completed || t.times_completed || 0,
-                    seeders: t.seeders || t.seed || 0,
-                    leechers: t.leechers || t.leech || 0
-                });
+                items.push(buildTorrentItem(t));
             }
         }
     }
@@ -373,6 +353,35 @@ async function scrapeCategory(categoryId) {
     const top = items.slice(0, 20);
     await enrichWithMeta(top, categoryId === 2 ? 'series' : 'movie');
     return top;
+}
+
+// Map one raw milkie torrent object to the SPA item shape (shared by scrape + search).
+function buildTorrentItem(t) {
+    const title = t.releaseName || t.title || t.name || 'Unknown';
+    const releaser = t.group || '';
+    const fullTitle = releaser && !title.includes(releaser) ? `${title}-${releaser}` : title;
+    const createdAtStr = t.createdAt || t.created_at || t.date || '';
+
+    let dlUrl = t.id ? `https://milkie.cc/api/v1/torrents/${t.id}/torrent` : '';
+    if (torrentApiKey && dlUrl) {
+        const cleanKey = torrentApiKey.replace(/^key=/, '');
+        dlUrl += `?key=${cleanKey}`;
+    }
+
+    return {
+        title: fullTitle,
+        torrentId: t.id || null,
+        category: t.category || null,
+        href: t.slug ? `/browse/${t.slug}` : (t.id ? `/browse/${t.id}` : '#'),
+        downloadUrl: dlUrl,
+        createdAt: createdAtStr,
+        createdAtTime: createdAtStr ? new Date(createdAtStr).getTime() : Date.now(),
+        size: t.size ? (typeof t.size === 'number' ? `${(t.size / (1024*1024*1024)).toFixed(2)} GiB` : t.size) : 'N/A',
+        downloaded: t.downloaded || t.completed || t.times_completed || 0,
+        seeders: t.seeders || t.seed || 0,
+        leechers: t.leechers || t.leech || 0,
+        meta: null
+    };
 }
 
 // API endpoint to set manual token (auto-saved to config.json)
@@ -424,6 +433,40 @@ app.post('/api/set-omdbkey', (req, res) => {
 app.get('/api/config', (req, res) => {
     res.json({ success: true, token: sessionToken, apiKey: torrentApiKey, omdbKey: omdbApiKey });
 });
+
+// Auto-updater endpoints (GitHub Releases).
+const updater = require('./updater');
+
+app.get('/api/update/check', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await updater.checkForUpdate()) });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/update/apply', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await updater.downloadAndApply()) });
+    } catch (err) {
+        console.error('Update failed:', err);
+        res.status(500).json({ success: false, error: err.stack || err.message });
+    }
+});
+
+// Check for updates on boot and daily; result is surfaced via /api/update/check.
+async function pollForUpdates() {
+    try {
+        const info = await updater.checkForUpdate();
+        if (info.available) {
+            console.log(`Update available: v${info.current} -> v${info.latest} (${info.url})`);
+        }
+    } catch (err) {
+        console.error('Update check failed:', err.message);
+    }
+}
+setTimeout(pollForUpdates, 30 * 1000);
+setInterval(pollForUpdates, 24 * 60 * 60 * 1000);
 
 // Watchlist endpoints
 app.get('/api/watchlist', (req, res) => {
@@ -477,6 +520,127 @@ app.post('/api/watchlist/:id/ack', (req, res) => {
     entry.latest = null;
     saveWatchlist();
     res.json({ success: true, entry });
+});
+
+// Milkie full-text search proxy: GET /api/search?query=president+curtis
+app.get('/api/search', async (req, res) => {
+    try {
+        const query = String(req.query.query || '').trim();
+        if (!query) return res.status(400).json({ success: false, error: 'query parameter is required' });
+
+        const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(query)}&oby=created_at&odir=desc&pi=0&ps=100`;
+        const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+        if (!apiRes.ok) {
+            throw new Error(`Search failed: status ${apiRes.status} - ${await apiRes.text()}`);
+        }
+        const data = await apiRes.json();
+        const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
+        res.json({
+            success: true,
+            hits: data.hits != null ? data.hits : list.length,
+            results: list.slice(0, 100).map(buildTorrentItem)
+        });
+    } catch (err) {
+        console.error('Search error:', err);
+        res.status(500).json({ success: false, error: err.stack || err.message });
+    }
+});
+
+// Latest-torrents cache: key "category|pi" -> { fetchedAt, payload }.
+// 15-minute TTL so paging back and forth never re-hits milkie.cc.
+const latestCache = new Map();
+const LATEST_TTL_MS = 15 * 60 * 1000;
+const LATEST_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+// Latest torrents from the last 48h, 100 per page: GET /api/latest?category=2&pi=0
+app.get('/api/latest', async (req, res) => {
+    try {
+        const category = req.query.category === '1' ? 1 : 2;
+        const pi = Math.max(0, parseInt(req.query.pi || '0', 10) || 0);
+        const key = `${category}|${pi}`;
+        const now = Date.now();
+
+        const cached = latestCache.get(key);
+        if (cached && (now - cached.fetchedAt) < LATEST_TTL_MS) {
+            return res.json({ ...cached.payload, cached: true });
+        }
+
+        const apiUrl = `https://milkie.cc/api/v1/torrents?oby=created_at&odir=desc&categories=${category}&pi=${pi}&ps=100`;
+        const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+        if (!apiRes.ok) {
+            throw new Error(`Latest fetch failed cat=${category} pi=${pi}: status ${apiRes.status} - ${await apiRes.text()}`);
+        }
+        const data = await apiRes.json();
+        const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
+        const cutoff = now - LATEST_WINDOW_MS;
+        const results = list.map(buildTorrentItem).filter(item => item.createdAtTime >= cutoff);
+
+        const payload = { success: true, category, pi, count: results.length, results };
+        latestCache.set(key, { fetchedAt: now, payload });
+        res.json({ ...payload, cached: false });
+    } catch (err) {
+        console.error('Latest error:', err);
+        res.status(500).json({ success: false, error: err.stack || err.message });
+    }
+});
+
+// Per-series episode cache: name -> { fetchedAt, items } (full date-sorted list).
+const showCache = new Map();
+const SHOW_TTL_MS = 15 * 60 * 1000;
+const SHOW_PAGE_SIZE = 50;
+
+// All released episodes for one show, newest first: GET /api/show?name=President Curtis&pi=0
+app.get('/api/show', async (req, res) => {
+    try {
+        const rawName = String(req.query.name || '').trim();
+        const pi = Math.max(0, parseInt(req.query.pi || '0', 10) || 0);
+        if (!rawName) return res.status(400).json({ success: false, error: 'name parameter is required' });
+        const key = rawName.toLowerCase();
+        const now = Date.now();
+
+        let items = null;
+        const cached = showCache.get(key);
+        if (cached && (now - cached.fetchedAt) < SHOW_TTL_MS) {
+            items = cached.items;
+        } else {
+            // Pull milkie search pages (100 each, cap 5) then keep exact series matches.
+            const all = [];
+            for (let spi = 0; spi < 5; spi++) {
+                const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(rawName)}&oby=created_at&odir=desc&pi=${spi}&ps=100`;
+                const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+                if (!apiRes.ok) {
+                    throw new Error(`Show fetch failed "${rawName}" pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
+                }
+                const data = await apiRes.json();
+                const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
+                all.push(...list);
+                if (list.length < 100) break;
+            }
+            items = all
+                .map(buildTorrentItem)
+                .filter(item => {
+                    const p = parseRelease(item.title);
+                    return p && p.seriesKey === key;
+                })
+                .sort((a, b) => b.createdAtTime - a.createdAtTime);
+            showCache.set(key, { fetchedAt: now, items });
+        }
+
+        const pages = Math.max(1, Math.ceil(items.length / SHOW_PAGE_SIZE));
+        const page = Math.min(pi, pages - 1);
+        res.json({
+            success: true,
+            name: rawName,
+            total: items.length,
+            page,
+            pages,
+            cached: !!cached && (now - cached.fetchedAt) < SHOW_TTL_MS,
+            results: items.slice(page * SHOW_PAGE_SIZE, page * SHOW_PAGE_SIZE + SHOW_PAGE_SIZE)
+        });
+    } catch (err) {
+        console.error('Show error:', err);
+        res.status(500).json({ success: false, error: err.stack || err.message });
+    }
 });
 
 app.get('/api/scrape', async (req, res) => {

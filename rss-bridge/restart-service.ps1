@@ -28,7 +28,7 @@ $svc = Get-Service | Where-Object {
 if (-not $svc) {
     Write-Output "Service '$ServiceName' is not installed."
     Write-Output 'Install it first from an elevated prompt:'
-    Write-Output '  cd "E:\My Documents\Default Project\rss-bridge"; node install-service.js'
+    Write-Output "  cd `"$PSScriptRoot`"; node install-service.js"
     exit 1
 }
 

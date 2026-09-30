@@ -13,6 +13,10 @@ rss-bridge/db.json
 torrents/
 torrents_archive/
 
+# Build artefacts: release zips and pre-update backups
+dist/
+update-backup/
+
 # Windows service build artefacts & logs
 rss-bridge/daemon/
 *.log

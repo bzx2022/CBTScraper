@@ -38,12 +38,12 @@ episodes as a legacy-compatible RSS feed for **uTorrent 2.2.1**.
 ## SPA setup
 
 ```powershell
-cd "E:\My Documents\Default Project"
+cd "<folder-where-you-put-the-app>"
 npm install
-npm start        # or run start.ps1, which also opens the browser
+npm start        # or double-click StartCBTScraper.bat, which also opens the browser
 ```
 
-Open `http://localhost:3000`, then use the footer buttons:
+Open `http://localhost:3000`, then click the gear icon (top bar) and open each section:
 
 | Button              | Value to paste |
 |---------------------|----------------|
@@ -63,7 +63,7 @@ The bridge runs independently of the SPA on plain HTTP
 (`http://127.0.0.1:8080`, required — uTorrent 2.2.1 cannot do modern TLS).
 
 ```powershell
-cd "E:\My Documents\Default Project\rss-bridge"
+cd "<app-folder>\rss-bridge"
 npm install
 node server.js        # foreground test run
 ```
@@ -73,11 +73,17 @@ Endpoints: `/feed.xml` (RSS feed), `/download/:filename` (file delivery),
 
 **Install as a Windows Service** (elevated PowerShell):
 
+Run `Install.ps1` once from the app folder (right-click → Run with PowerShell).
+It checks for Node.js (offers to install it), installs missing/outdated
+dependencies for both projects, and offers to install + start the service:
+
 ```powershell
-cd "E:\My Documents\Default Project\rss-bridge"
-npm install
-node install-service.js     # registers + starts MilkieRSSBridge
+.\Install.ps1            # prompted install
+.\Install.ps1 -Yes       # accept every prompt
+.\Install.ps1 -Mode Uninstall   # remove the Windows Service
 ```
+
+Double-click `RestartRSSBridge.bat` (in the app folder) any time to restart the service.
 
 Add `http://127.0.0.1:8080/feed.xml` as an RSS feed in uTorrent 2.2.1.
 To remove the service: `node uninstall-service.js` from an elevated prompt.

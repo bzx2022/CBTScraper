@@ -198,6 +198,7 @@ async function pollWatchlistOnce() {
 
       // Mirror the SPA flag so the SPA UI shows "New Episode Found" too.
       entry.hasNew = true;
+      entry.newDetectedAt = new Date().toISOString();
       entry.latest = {
         season: best.parsed.season,
         episode: best.parsed.episode,

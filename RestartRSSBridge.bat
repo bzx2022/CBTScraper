@@ -1,5 +1,4 @@
 @echo off
-e:
-cd "E:\My Documents\Default Project\rss-bridge"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "restart-service.ps1"
+cd /d "%~dp0rss-bridge"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0rss-bridge\restart-service.ps1"
 pause

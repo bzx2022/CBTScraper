@@ -39,6 +39,21 @@
             <span class="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">Last 7 Days Top 20</span>
         </div>
         <div class="flex items-center space-x-2">
+            <button id="latest-tv-btn" onclick="openLatest(2)" title="Latest TV (48h)" class="p-2 bg-zinc-800 hover:bg-zinc-700 text-blue-400 rounded-md border border-zinc-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+            </button>
+            <button id="latest-movies-btn" onclick="openLatest(1)" title="Latest Movies (48h)" class="p-2 bg-zinc-800 hover:bg-zinc-700 text-purple-400 rounded-md border border-zinc-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
+                </svg>
+            </button>
+            <button id="search-btn" onclick="openSearch()" title="Search milkie.cc" class="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md border border-zinc-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+            </button>
             <button id="watchlist-btn" onclick="openWatchlist()" title="Watchlist" class="relative p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md border border-zinc-700 transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
@@ -168,6 +183,26 @@
                 </div>
             </div>
 
+            <!-- Updates section -->
+            <div id="acc-updates" class="border border-zinc-700 rounded-md overflow-hidden">
+                <button onclick="toggleSettingsSection('acc-updates')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
+                    <span class="acc-heading text-sm font-medium text-zinc-300">Updates</span>
+                    <span class="flex items-center space-x-2">
+                        <span id="status-update" class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">v?</span>
+                        <svg class="acc-icon w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </button>
+                <div class="acc-body">
+                    <div class="px-4 pb-4 flex flex-col space-y-3">
+                        <p class="text-xs text-zinc-400" id="update-status">Check GitHub Releases for a newer version.</p>
+                        <div class="flex justify-end space-x-2">
+                            <button onclick="checkForUpdates()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Check now</button>
+                            <button onclick="applyUpdate()" id="update-apply-btn" class="hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition">Download & Install</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Error Log section -->
             <div id="acc-errors" class="border border-zinc-700 rounded-md overflow-hidden">
                 <button onclick="toggleSettingsSection('acc-errors')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
@@ -204,6 +239,78 @@
             <div id="watchlist-container" class="flex-1 overflow-y-auto space-y-2 min-h-[10rem]">
                 <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
                     No shows in watchlist yet. Use + on a TV show to add it.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Modal -->
+    <div id="search-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeSearch()">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg w-[60%] p-6 flex flex-col space-y-3 shadow-2xl max-h-[90vh] overflow-hidden">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-zinc-100">Search milkie.cc</h3>
+                <button onclick="closeSearch()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="flex items-center space-x-2">
+                <input type="text" id="search-input" class="flex-1 bg-dark-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500" placeholder="e.g. president curtis" onkeydown="if (event.key === 'Enter') runSearch()" />
+                <button onclick="runSearch()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded transition">Search</button>
+            </div>
+            <div class="text-xs text-zinc-500" id="search-status"></div>
+            <div id="search-container" class="flex-1 overflow-y-auto space-y-2 min-h-[10rem]">
+                <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
+                    Type a query above and press Search.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Latest Modal -->
+    <div id="latest-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeLatest()">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg w-[60%] p-6 flex flex-col space-y-3 shadow-2xl max-h-[90vh] overflow-hidden">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-zinc-100" id="latest-title">Latest</h3>
+                <div class="flex items-center space-x-3">
+                    <div class="flex items-center space-x-2">
+                        <button onclick="latestPage(-1)" id="latest-prev" class="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition">Prev</button>
+                        <span id="latest-page" class="text-xs text-zinc-500">Page 1</span>
+                        <button onclick="latestPage(1)" id="latest-next" class="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition">Next</button>
+                    </div>
+                    <button onclick="closeLatest()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="text-xs text-zinc-500" id="latest-status">Last 48 hours, 100 per page.</div>
+            <div id="latest-container" class="flex-1 overflow-y-auto space-y-2 min-h-[10rem]">
+                <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Show Episodes Modal -->
+    <div id="show-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeShowModal()">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg w-[60%] p-6 flex flex-col space-y-3 shadow-2xl h-[90vh]">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-zinc-100 truncate" id="show-title">Episodes</h3>
+                <div class="flex items-center space-x-3">
+                    <div class="flex items-center space-x-2">
+                        <button onclick="showPage(-1)" id="show-prev" class="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition">Prev</button>
+                        <span id="show-page" class="text-xs text-zinc-500">Page 1</span>
+                        <button onclick="showPage(1)" id="show-next" class="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition">Next</button>
+                    </div>
+                    <button onclick="closeShowModal()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="text-xs text-zinc-500" id="show-status"></div>
+            <div id="show-container" class="flex-1 overflow-y-auto space-y-2 min-h-[10rem]">
+                <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
+                    Loading...
                 </div>
             </div>
         </div>
@@ -268,8 +375,59 @@
             setStatusBadge('status-omdb', !!document.getElementById('omdb-input').value.trim());
         }
 
+        let pendingUpdate = null;
+
+        async function checkForUpdates() {
+            const status = document.getElementById('update-status');
+            const badge = document.getElementById('status-update');
+            const applyBtn = document.getElementById('update-apply-btn');
+            status.textContent = 'Checking GitHub Releases...';
+            applyBtn.classList.add('hidden');
+            pendingUpdate = null;
+            try {
+                const res = await fetch('/api/update/check');
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Update check failed');
+                badge.textContent = 'v' + data.current;
+                if (data.available) {
+                    pendingUpdate = data;
+                    status.textContent = `v${data.latest} available (you have v${data.current}). Restart the SPA + bridge service after installing.`;
+                    applyBtn.classList.remove('hidden');
+                } else {
+                    status.textContent = `Up to date (v${data.current}).${data.message ? ' ' + data.message : ''}`;
+                }
+            } catch (err) {
+                status.textContent = 'Check failed — see error log.';
+                logError(err);
+            }
+        }
+
+        async function applyUpdate() {
+            if (!pendingUpdate) return;
+            const status = document.getElementById('update-status');
+            const applyBtn = document.getElementById('update-apply-btn');
+            applyBtn.classList.add('hidden');
+            status.textContent = `Downloading and installing v${pendingUpdate.latest}... (this takes a minute)`;
+            try {
+                const res = await fetch('/api/update/apply', { method: 'POST' });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Update failed');
+                if (data.updated) {
+                    status.textContent = `Installed v${data.latest} (${data.installedFiles} files). PLEASE RESTART: ` +
+                        data.needsRestart.join(' | ');
+                    document.getElementById('status-update').textContent = 'v' + data.latest + ' — restart needed';
+                } else {
+                    status.textContent = 'Already up to date.';
+                }
+            } catch (err) {
+                status.textContent = 'Install failed — see error log.';
+                logError(err);
+            }
+            pendingUpdate = null;
+        }
+
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { closeSettings(); closeWatchlist(); }
+            if (e.key === 'Escape') { closeSettings(); closeWatchlist(); closeSearch(); closeLatest(); closeShowModal(); }
         });
 
         function openWatchlist() {
@@ -283,6 +441,268 @@
             const modal = document.getElementById('watchlist-modal');
             modal.classList.remove('flex');
             modal.classList.add('hidden');
+        }
+
+        let lastSearchResults = [];
+
+        function openSearch() {
+            const modal = document.getElementById('search-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('search-input').focus();
+        }
+
+        function closeSearch() {
+            const modal = document.getElementById('search-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        let latestCategory = 2;
+        let latestPi = 0;
+
+        function openLatest(category) {
+            latestCategory = category === 1 ? 1 : 2;
+            latestPi = 0;
+            document.getElementById('latest-title').textContent =
+                latestCategory === 2 ? 'Latest TV Shows (48h)' : 'Latest Movies (48h)';
+            const modal = document.getElementById('latest-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            fetchLatest();
+        }
+
+        function closeLatest() {
+            const modal = document.getElementById('latest-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        let showName = '';
+        let showPi = 0;
+        let lastShowResults = [];
+
+        // Mirror of the server's series-name parsing: text before SxxEyy.
+        function parseSeriesName(title) {
+            if (!title) return null;
+            const m = title.match(/[._-]S(\d{1,2})E(\d{1,3})/i);
+            if (!m) return null;
+            let head = title.slice(0, m.index);
+            head = head.replace(/[._]+/g, ' ').replace(/-+/g, ' ').trim();
+            head = head.replace(/\b(19|20)\d{2}\b/g, '').replace(/\s{2,}/g, ' ').trim();
+            return head || null;
+        }
+
+        function openShowModal(index) {
+            const item = lastTvShows[index];
+            if (!item) return;
+            const name = parseSeriesName(item.title);
+            if (!name) {
+                logError(`Could not parse series name from "${item.title}"`);
+                return;
+            }
+            showName = name;
+            showPi = 0;
+            document.getElementById('show-title').textContent = name;
+            const modal = document.getElementById('show-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            fetchShow();
+        }
+
+        function closeShowModal() {
+            const modal = document.getElementById('show-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function showPage(dir) {
+            showPi = Math.max(0, showPi + dir);
+            fetchShow();
+        }
+
+        async function fetchShow() {
+            const container = document.getElementById('show-container');
+            const status = document.getElementById('show-status');
+            container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Loading...</div>';
+            status.textContent = '';
+            try {
+                const res = await fetch(`/api/show?name=${encodeURIComponent(showName)}&pi=${showPi}`);
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Show fetch failed');
+                showPi = data.page;
+                lastShowResults = data.results || [];
+                document.getElementById('show-page').textContent = `Page ${showPi + 1} of ${data.pages}`;
+                document.getElementById('show-prev').disabled = showPi === 0;
+                document.getElementById('show-prev').classList.toggle('opacity-40', showPi === 0);
+                document.getElementById('show-next').disabled = showPi >= data.pages - 1;
+                document.getElementById('show-next').classList.toggle('opacity-40', showPi >= data.pages - 1);
+                status.textContent = `${data.total} episode torrent(s), newest first${data.cached ? ' (cached)' : ''}.`;
+                renderShowResults();
+            } catch (err) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Load failed — see error log.</div>';
+                logError(err);
+            }
+        }
+
+        function renderShowResults() {
+            const container = document.getElementById('show-container');
+            container.innerHTML = '';
+            if (lastShowResults.length === 0) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">No episodes found.</div>';
+                return;
+            }
+            lastShowResults.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition flex items-center gap-3 whitespace-nowrap overflow-hidden text-xs';
+                card.innerHTML = `
+                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                    <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-400 shrink-0" title="Seeders">S: ${item.seeders}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-400 shrink-0" title="Leechers">L: ${item.leechers}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-500 shrink-0">${item.size}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-500 shrink-0 hidden xl:inline" title="${item.createdAt}">${item.createdAt}</span>
+                    <button onclick="addShowToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0 text-xs font-bold">+</button>
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function addShowToWatchlist(index) {
+            const item = lastShowResults[index];
+            if (!item) return;
+            try {
+                const res = await fetch('/api/watchlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: item.title, torrentId: item.torrentId })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to add to watchlist');
+                await fetchWatchlist();
+            } catch (err) {
+                logError(err);
+            }
+        }
+
+        function latestPage(dir) {
+            latestPi = Math.max(0, latestPi + dir);
+            fetchLatest();
+        }
+
+        async function fetchLatest() {
+            const container = document.getElementById('latest-container');
+            const status = document.getElementById('latest-status');
+            document.getElementById('latest-page').textContent = `Page ${latestPi + 1}`;
+            document.getElementById('latest-prev').disabled = latestPi === 0;
+            document.getElementById('latest-prev').classList.toggle('opacity-40', latestPi === 0);
+            container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Loading...</div>';
+            try {
+                const res = await fetch(`/api/latest?category=${latestCategory}&pi=${latestPi}`);
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Latest fetch failed');
+                status.textContent = `Last 48 hours, 100 per page — ${data.count} torrent(s)${data.cached ? ' (cached)' : ''}.`;
+                renderLatestResults(data.results || []);
+            } catch (err) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Load failed — see error log.</div>';
+                logError(err);
+            }
+        }
+
+        function renderLatestResults(items) {
+            const container = document.getElementById('latest-container');
+            container.innerHTML = '';
+            if (items.length === 0) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">No torrents in the last 48 hours on this page.</div>';
+                return;
+            }
+            items.forEach((item) => {
+                const card = document.createElement('div');
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition flex items-center gap-3 whitespace-nowrap overflow-hidden text-xs';
+                card.innerHTML = `
+                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                    <span class="text-emerald-400 font-medium shrink-0">${item.downloaded} Dl</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-400 shrink-0">S: ${item.seeders}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-500 shrink-0">${item.size}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-500 shrink-0 hidden xl:inline" title="${item.createdAt}">${item.createdAt}</span>
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function runSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            const container = document.getElementById('search-container');
+            const status = document.getElementById('search-status');
+            if (!query) return;
+            container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Searching...</div>';
+            status.textContent = '';
+            try {
+                const res = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Search failed');
+                lastSearchResults = data.results || [];
+                status.textContent = `${data.hits} hit(s)`;
+                renderSearchResults();
+            } catch (err) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Search failed — see error log.</div>';
+                logError(err);
+            }
+        }
+
+        function renderSearchResults() {
+            const container = document.getElementById('search-container');
+            container.innerHTML = '';
+            if (lastSearchResults.length === 0) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">No results found.</div>';
+                return;
+            }
+            lastSearchResults.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition flex items-center gap-3 whitespace-nowrap overflow-hidden text-xs';
+                const isTv = item.category === 2;
+                const addBtn = isTv
+                    ? `<button onclick="addSearchToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-emerald-700 text-zinc-300 hover:text-white transition shrink-0 text-xs font-bold">+</button>`
+                    : '';
+                card.innerHTML = `
+                    <span class="px-1.5 py-0.5 rounded ${isTv ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'} text-[10px] font-semibold shrink-0">${isTv ? 'TV' : (item.category === 1 ? 'Movie' : 'Other')}</span>
+                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                    <span class="text-emerald-400 font-medium shrink-0">${item.downloaded} Dl</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-400 shrink-0">S: ${item.seeders}</span>
+                    <span class="text-zinc-600 shrink-0">|</span>
+                    <span class="text-zinc-500 shrink-0">${item.size}</span>
+                    ${addBtn}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function addSearchToWatchlist(index) {
+            const item = lastSearchResults[index];
+            if (!item) return;
+            try {
+                const res = await fetch('/api/watchlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: item.title, torrentId: item.torrentId })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed to add to watchlist');
+                await fetchWatchlist();
+            } catch (err) {
+                logError(err);
+            }
         }
 
         function renderList(containerId, countId, items) {
@@ -322,7 +742,11 @@
                 card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition text-xs';
 
                 const addBtn = (containerId === 'tv-container')
-                    ? `<button onclick="addToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-emerald-700 text-zinc-300 hover:text-white transition shrink-0 text-xs font-bold">+</button>`
+                    ? `<button onclick="addToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0 text-xs font-bold">+</button>`
+                    : '';
+
+                const showBtn = (containerId === 'tv-container')
+                    ? `<button onclick="openShowModal(${index})" title="Show all episodes" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`
                     : '';
 
                 card.innerHTML = `
@@ -338,8 +762,9 @@
                         <span class="text-zinc-500 shrink-0">${item.size}</span>
                         <span class="text-zinc-600 shrink-0">|</span>
                         <span class="text-zinc-500 shrink-0 hidden xl:inline" title="${item.createdAt}">${item.createdAt}</span>
+                        ${showBtn}
                         ${addBtn}
-                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m4 4V4"></path></svg></a>` : ''}
+                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
                     </div>
                     <div class="pl-10 pr-1 pt-0.5">${metaLine(item.meta)}</div>
                 `;
@@ -349,6 +774,14 @@
 
         let lastTvShows = [];
 
+        // Highlight is active only if the episode was detected in the last 3 days.
+        // Entries flagged before detection timestamps existed stay highlighted.
+        function isNewActive(entry) {
+            if (!entry.hasNew) return false;
+            if (!entry.newDetectedAt) return true;
+            return (Date.now() - new Date(entry.newDetectedAt).getTime()) < 3 * 24 * 60 * 60 * 1000;
+        }
+
         function renderWatchlist(list) {
             const container = document.getElementById('watchlist-container');
             const countSpan = document.getElementById('watchlist-count');
@@ -357,7 +790,7 @@
             const badge = document.getElementById('watchlist-badge');
             badge.textContent = list.length;
             badge.classList.toggle('hidden', list.length === 0);
-            const newCount = list.filter((e) => e.hasNew).length;
+            const newCount = list.filter(isNewActive).length;
             badge.classList.toggle('bg-amber-500', newCount > 0);
             badge.classList.toggle('bg-emerald-600', newCount === 0);
             badge.title = newCount > 0 ? `${newCount} new episode(s) found` : 'Shows tracked';
@@ -368,7 +801,7 @@
             list.forEach((entry) => {
                 const card = document.createElement('div');
                 card.className = 'bg-dark-900/50 border border-zinc-800/80 rounded-md px-3 py-2 flex items-center gap-3 text-xs whitespace-nowrap overflow-hidden';
-                const badge = entry.hasNew
+                const badge = isNewActive(entry)
                     ? `<span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-semibold shrink-0">New Episode Found${entry.latest ? ` S${String(entry.latest.season).padStart(2, '0')}E${String(entry.latest.episode).padStart(2, '0')}` : ''}</span>`
                     : `<span class="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[11px] shrink-0">S${String(entry.season).padStart(2, '0')}E${String(entry.episode).padStart(2, '0')}</span>`;
                 const dlInfo = entry.downloadedFile ? `<span class="text-zinc-500 truncate" title="${entry.downloadedFile}">&#8595; ${entry.downloadedFile.split(/[\\/]/).pop()}</span>` : '';
@@ -377,7 +810,6 @@
                     <span class="text-sm font-medium text-zinc-100 truncate flex-1 min-w-0" title="${entry.displayName}">${entry.displayName}</span>
                     ${badge}
                     ${dlInfo}${dlErr}
-                    ${entry.hasNew ? `<button onclick="ackWatchlist('${entry.id}')" title="Mark as watched" class="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white transition shrink-0 text-[11px]">Mark watched</button>` : ''}
                     <button onclick="removeFromWatchlist('${entry.id}')" title="Remove from watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-red-700 text-zinc-300 hover:text-white transition shrink-0 text-[11px]">Remove</button>
                 `;
                 container.appendChild(card);
@@ -416,17 +848,6 @@
                 const res = await fetch(`/api/watchlist/${id}`, { method: 'DELETE' });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Failed to remove');
-                await fetchWatchlist();
-            } catch (err) {
-                logError(err);
-            }
-        }
-
-        async function ackWatchlist(id) {
-            try {
-                const res = await fetch(`/api/watchlist/${id}/ack`, { method: 'POST' });
-                const data = await res.json();
-                if (!data.success) throw new Error(data.error || 'Failed to acknowledge');
                 await fetchWatchlist();
             } catch (err) {
                 logError(err);

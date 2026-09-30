@@ -1,8 +1,15 @@
-Install instructions (elevated PowerShell):
+Install instructions:
 
-cd "E:\My Documents\Default Project\rss-bridge"
-npm install
-node install-service.js   # registers + starts MilkieRSSBridge
+  Right-click Install.ps1 (in the app folder) -> Run with PowerShell.
+  It detects missing prerequisites and offers to install them:
+    1. Node.js LTS (via winget, or opens nodejs.org as fallback)
+    2. npm dependencies for the SPA and rss-bridge/ (only when missing/stale)
+    3. The MilkieRSSBridge Windows Service (elevates as needed)
 
-Then in uTorrent 2.2.1 add RSS feed http://127.0.0.1:8080/feed.xml. To remove: node uninstall-service.js from the same elevated prompt.
+Uninstall the service:  Install.ps1 -Mode Uninstall
+Restart the service:    double-click RestartRSSBridge.bat
 
+All scripts resolve paths from their own location, so the app folder may
+live on any drive/path as long as rss-bridge/ sits inside it.
+
+Then in uTorrent 2.2.1 add RSS feed http://127.0.0.1:8080/feed.xml.
