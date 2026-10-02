@@ -1,6 +1,6 @@
 {
   "name": "milkie-rss-bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local RSS bridge for uTorrent 2.2.1: polls milkie.cc watchlist, serves torrents over plain HTTP, archives after download",
   "main": "server.js",
   "scripts": {

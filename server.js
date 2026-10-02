@@ -65,15 +65,31 @@ function isProperRelease(title) {
     return /\b(PROPER|REPACK)\b/i.test(title || '');
 }
 
-// True if this exact episode was already downloaded, unless the candidate is
-// a PROPER/REPACK upgrade we haven't grabbed yet. Prevents re-downloading
-// the same S/E on every scrape while still allowing proper upgrades.
+function detectResolution(title) {
+    const t = title || '';
+    if (/\b2160p\b/i.test(t) || /\b4K\b/i.test(t)) return '2160p';
+    if (/\b1080p\b/i.test(t)) return '1080p';
+    if (/\b720p\b/i.test(t)) return '720p';
+    if (/\b480p\b/i.test(t)) return '480p';
+    return 'unknown';
+}
+
+function entryResolution(entry) {
+    return ['720p', '1080p', '2160p'].includes(entry.resolution) ? entry.resolution : '1080p';
+}
+
+// True if this exact episode was already downloaded, with two upgrade paths:
+// a PROPER/REPACK we haven't grabbed yet (when autoProper is enabled), or the
+// preferred resolution we haven't grabbed yet (e.g. fallback 720p was taken,
+// preferred 1080p appears later). Prevents re-downloading the same S/E.
 function alreadyDownloaded(entry, season, episode, title) {
     const tag = releaseTag(season, episode);
     const prior = (entry.downloadedReleases || []).filter(r => r.tag === tag);
     if (prior.length === 0) return false;
-    const proper = isProperRelease(title);
-    if (proper && !prior.some(r => r.proper)) return false;
+    if (isProperRelease(title) && entry.autoProper !== false && !prior.some(r => r.proper)) return false;
+    const res = detectResolution(title);
+    const pref = entryResolution(entry);
+    if (res === pref && !prior.some(r => r.resolution === pref)) return false;
     return true;
 }
 
@@ -83,8 +99,35 @@ function recordDownload(entry, season, episode, title) {
         tag: releaseTag(season, episode),
         title,
         proper: isProperRelease(title),
+        resolution: detectResolution(title),
         downloadedAt: new Date().toISOString()
     });
+}
+
+// Pick which candidate to download: prefer the entry's resolution; only fall
+// back to another resolution if the preferred one hasn't appeared within
+// RES_FALLBACK_MS of the first sighting. Returns { best, waited }.
+const RES_FALLBACK_MS = 24 * 60 * 60 * 1000;
+
+function selectCandidate(entry, candidates) {
+    const now = Date.now();
+    const pref = entryResolution(entry);
+    const prefMatch = candidates.filter(c => detectResolution(c.item.title) === pref);
+    if (prefMatch.length > 0) {
+        prefMatch.sort((a, b) => (a.parsed.season - b.parsed.season) || (a.parsed.episode - b.parsed.episode));
+        entry.firstDetectedAt = null;
+        return { best: prefMatch[prefMatch.length - 1], waited: false };
+    }
+    if (!entry.firstDetectedAt) {
+        entry.firstDetectedAt = new Date(now).toISOString();
+        return { best: null, waited: true };
+    }
+    if (now - new Date(entry.firstDetectedAt).getTime() >= RES_FALLBACK_MS) {
+        candidates.sort((a, b) => (a.parsed.season - b.parsed.season) || (a.parsed.episode - b.parsed.episode));
+        entry.firstDetectedAt = null;
+        return { best: candidates[candidates.length - 1], waited: false };
+    }
+    return { best: null, waited: true };
 }
 
 function buildAuthHeaders() {
@@ -134,28 +177,34 @@ async function checkWatchlist(tvItems) {
                 candidates.push({ parsed: p, item });
             }
         }
-        // Drop episodes already downloaded (same S/E), except PROPER/REPACK upgrades.
+        // Drop episodes already downloaded (same S/E), except PROPER/REPACK or
+        // preferred-resolution upgrades.
         const fresh = candidates.filter(c => !alreadyDownloaded(entry, c.parsed.season, c.parsed.episode, c.item.title));
-        if (fresh.length > 0) {
-            fresh.sort((a, b) => (a.parsed.season - b.parsed.season) || (a.parsed.episode - b.parsed.episode));
-            const best = fresh[fresh.length - 1];
-            entry.hasNew = true;
-            entry.newDetectedAt = new Date().toISOString();
-            entry.latest = {
-                season: best.parsed.season,
-                episode: best.parsed.episode,
-                title: best.item.title,
-                torrentId: best.item.torrentId,
-                downloadUrl: best.item.downloadUrl
-            };
-            try {
-                entry.downloadedFile = await downloadTorrentFile(best.item.torrentId, best.item.title);
-                entry.downloadError = null;
-                recordDownload(entry, best.parsed.season, best.parsed.episode, best.item.title);
-            } catch (err) {
-                entry.downloadError = err.message;
-            }
-            changed = true;
+        if (fresh.length === 0) continue;
+        // Show the newest sighting on the badge even while waiting for the
+        // preferred resolution.
+        fresh.sort((a, b) => (a.parsed.season - b.parsed.season) || (a.parsed.episode - b.parsed.episode));
+        const newest = fresh[fresh.length - 1];
+        entry.hasNew = true;
+        entry.newDetectedAt = new Date().toISOString();
+        entry.latest = {
+            season: newest.parsed.season,
+            episode: newest.parsed.episode,
+            title: newest.item.title,
+            torrentId: newest.item.torrentId,
+            downloadUrl: newest.item.downloadUrl
+        };
+        changed = true;
+        // Download preferred resolution immediately; otherwise wait up to 24h
+        // for it before falling back to whatever is available.
+        const { best } = selectCandidate(entry, fresh);
+        if (!best) continue;
+        try {
+            entry.downloadedFile = await downloadTorrentFile(best.item.torrentId, best.item.title);
+            entry.downloadError = null;
+            recordDownload(entry, best.parsed.season, best.parsed.episode, best.item.title);
+        } catch (err) {
+            entry.downloadError = err.message;
         }
     }
     if (changed) saveWatchlist();
@@ -493,7 +542,10 @@ app.post('/api/watchlist', (req, res) => {
         latest: null,
         downloadedFile: null,
         downloadError: null,
-        downloadedReleases: []
+        downloadedReleases: [],
+        resolution: '1080p',
+        autoProper: true,
+        firstDetectedAt: null
     };
     watchlist.push(entry);
     saveWatchlist();
@@ -506,6 +558,25 @@ app.delete('/api/watchlist/:id', (req, res) => {
     if (watchlist.length === before) return res.status(404).json({ success: false, error: 'Entry not found' });
     saveWatchlist();
     res.json({ success: true });
+});
+
+// Update per-entry preferences: { resolution: '720p'|'1080p'|'2160p', autoProper: bool }
+app.post('/api/watchlist/:id', (req, res) => {
+    const entry = watchlist.find(e => e.id === req.params.id);
+    if (!entry) return res.status(404).json({ success: false, error: 'Entry not found' });
+    const { resolution, autoProper } = req.body || {};
+    if (resolution !== undefined) {
+        if (!['720p', '1080p', '2160p'].includes(resolution)) {
+            return res.status(400).json({ success: false, error: 'resolution must be 720p, 1080p or 2160p' });
+        }
+        if (entry.resolution !== resolution) {
+            entry.resolution = resolution;
+            entry.firstDetectedAt = null; // restart the 24h wait clock on preference change
+        }
+    }
+    if (autoProper !== undefined) entry.autoProper = !!autoProper;
+    saveWatchlist();
+    res.json({ success: true, entry });
 });
 
 app.post('/api/watchlist/:id/ack', (req, res) => {

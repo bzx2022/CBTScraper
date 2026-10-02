@@ -85,15 +85,31 @@ function isProperRelease(title) {
   return /\b(PROPER|REPACK)\b/i.test(title || '');
 }
 
+function detectResolution(title) {
+  const t = title || '';
+  if (/\b2160p\b/i.test(t) || /\b4K\b/i.test(t)) return '2160p';
+  if (/\b1080p\b/i.test(t)) return '1080p';
+  if (/\b720p\b/i.test(t)) return '720p';
+  if (/\b480p\b/i.test(t)) return '480p';
+  return 'unknown';
+}
+
+function entryResolution(entry) {
+  return ['720p', '1080p', '2160p'].includes(entry.resolution) ? entry.resolution : '1080p';
+}
+
 // Same dedup policy as the SPA: skip S/E already downloaded, except a
-// PROPER/REPACK upgrade not yet grabbed. The tracked S/E only advances on
-// user acknowledge, so without this log every poll would re-download.
+// PROPER/REPACK upgrade (when autoProper is enabled) or the preferred
+// resolution not yet grabbed. The tracked S/E only advances on user
+// acknowledge, so without this log every poll would re-download.
 function alreadyDownloaded(entry, season, episode, title) {
   const tag = releaseTag(season, episode);
   const prior = (entry.downloadedReleases || []).filter((r) => r.tag === tag);
   if (prior.length === 0) return false;
-  const proper = isProperRelease(title);
-  if (proper && !prior.some((r) => r.proper)) return false;
+  if (isProperRelease(title) && entry.autoProper !== false && !prior.some((r) => r.proper)) return false;
+  const res = detectResolution(title);
+  const pref = entryResolution(entry);
+  if (res === pref && !prior.some((r) => r.resolution === pref)) return false;
   return true;
 }
 
@@ -103,8 +119,34 @@ function recordDownload(entry, season, episode, title) {
     tag: releaseTag(season, episode),
     title,
     proper: isProperRelease(title),
+    resolution: detectResolution(title),
     downloadedAt: new Date().toISOString(),
   });
+}
+
+// Prefer the entry's resolution; fall back to any resolution only if the
+// preferred one hasn't appeared within 24h of first sighting.
+const RES_FALLBACK_MS = 24 * 60 * 60 * 1000;
+
+function selectCandidate(entry, candidates) {
+  const now = Date.now();
+  const pref = entryResolution(entry);
+  const prefMatch = candidates.filter((c) => detectResolution(c.title) === pref);
+  if (prefMatch.length > 0) {
+    prefMatch.sort((a, b) => a.parsed.season - b.parsed.season || a.parsed.episode - b.parsed.episode);
+    entry.firstDetectedAt = null;
+    return { best: prefMatch[prefMatch.length - 1], waited: false };
+  }
+  if (!entry.firstDetectedAt) {
+    entry.firstDetectedAt = new Date(now).toISOString();
+    return { best: null, waited: true };
+  }
+  if (now - new Date(entry.firstDetectedAt).getTime() >= RES_FALLBACK_MS) {
+    candidates.sort((a, b) => a.parsed.season - b.parsed.season || a.parsed.episode - b.parsed.episode);
+    entry.firstDetectedAt = null;
+    return { best: candidates[candidates.length - 1], waited: false };
+  }
+  return { best: null, waited: true };
 }
 
 function readJsonSafe(p, fallback) {
@@ -179,7 +221,22 @@ async function pollWatchlistOnce() {
       }
       if (candidates.length === 0) continue;
       candidates.sort((a, b) => a.parsed.season - b.parsed.season || a.parsed.episode - b.parsed.episode);
-      const best = candidates[candidates.length - 1];
+      // Show the newest sighting on the badge even while waiting for the
+      // preferred resolution.
+      const newest = candidates[candidates.length - 1];
+      entry.hasNew = true;
+      entry.newDetectedAt = new Date().toISOString();
+      entry.latest = {
+        season: newest.parsed.season,
+        episode: newest.parsed.episode,
+        title: newest.title,
+        torrentId: newest.raw.id,
+        downloadUrl: `https://milkie.cc/api/v1/torrents/${newest.raw.id}/torrent${torrentApiKey ? `?key=${torrentApiKey}` : ''}`,
+      };
+      watchlistChanged = true;
+      // Download preferred resolution immediately; otherwise wait up to 24h.
+      const { best } = selectCandidate(entry, candidates);
+      if (!best) continue;
       // Anti-loop: skip if this exact release already sits in torrents/ or archive/.
       const safeName = `${best.title.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 150)}.torrent`;
       if (fs.existsSync(path.join(TORRENT_DIR, safeName)) || fs.existsSync(path.join(ARCHIVE_DIR, safeName))) {
@@ -196,16 +253,6 @@ async function pollWatchlistOnce() {
       fs.writeFileSync(path.join(TORRENT_DIR, safeName), Buffer.from(await dlRes.arrayBuffer()));
       console.log(`[bridge] New episode for "${entry.displayName}": ${best.title} -> torrents/${safeName}`);
 
-      // Mirror the SPA flag so the SPA UI shows "New Episode Found" too.
-      entry.hasNew = true;
-      entry.newDetectedAt = new Date().toISOString();
-      entry.latest = {
-        season: best.parsed.season,
-        episode: best.parsed.episode,
-        title: best.title,
-        torrentId: best.raw.id,
-        downloadUrl: dlUrl,
-      };
       entry.downloadedFile = path.join(TORRENT_DIR, safeName);
       entry.downloadError = null;
       recordDownload(entry, best.parsed.season, best.parsed.episode, best.title);
