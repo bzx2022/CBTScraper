@@ -33,7 +33,19 @@ try {
         } | Copy-Item -Destination $dest -Recurse -Force
     }
     if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath -Force }
-    Compress-Archive -Path (Join-Path $StageDir '*') -DestinationPath $ZipPath
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    # Write entries manually with '/' separators: Compress-Archive and
+    # CreateFromDirectory emit backslashes on Windows, which breaks the
+    # updater's path checks.
+    $zip = [System.IO.Compression.ZipFile]::Open($ZipPath, 'Create')
+    try {
+        Get-ChildItem -LiteralPath $StageDir -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring($StageDir.Length + 1).Replace('\', '/')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $rel) | Out-Null
+        }
+    } finally {
+        $zip.Dispose()
+    }
     Write-Output "Release asset built: $ZipPath"
 } finally {
     Remove-Item -LiteralPath $StageDir -Recurse -Force -ErrorAction SilentlyContinue

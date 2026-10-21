@@ -22,6 +22,11 @@ function loadWatchlist() {
         if (fs.existsSync(WATCHLIST_PATH)) {
             watchlist = JSON.parse(fs.readFileSync(WATCHLIST_PATH, 'utf8'));
             if (!Array.isArray(watchlist)) watchlist = [];
+            let repaired = false;
+            for (const entry of watchlist) {
+                if (normalizeLog(entry)) repaired = true;
+            }
+            if (repaired) saveWatchlist();
         }
         if (!fs.existsSync(TORRENT_DIR)) fs.mkdirSync(TORRENT_DIR, { recursive: true });
     } catch (err) {
@@ -104,6 +109,24 @@ function recordDownload(entry, season, episode, title) {
     });
 }
 
+// Backfill download-log records written before resolution tracking existed:
+// derive the missing fields from the stored release title so the dedup check
+// treats them as the resolution they actually were.
+function normalizeLog(entry) {
+    let touched = false;
+    for (const r of (entry.downloadedReleases || [])) {
+        if (r.resolution === undefined && r.title) {
+            r.resolution = detectResolution(r.title);
+            touched = true;
+        }
+        if (r.proper === undefined) {
+            r.proper = isProperRelease(r.title);
+            touched = true;
+        }
+    }
+    return touched;
+}
+
 // Pick which candidate to download: prefer the entry's resolution; only fall
 // back to another resolution if the preferred one hasn't appeared within
 // RES_FALLBACK_MS of the first sighting. Returns { best, waited }.
@@ -170,6 +193,7 @@ async function checkWatchlist(tvItems) {
     let changed = false;
     for (const entry of watchlist) {
         if (seedDownloadLog(entry)) changed = true;
+        if (normalizeLog(entry)) changed = true;
         const candidates = [];
         for (const item of tvItems) {
             const p = parseRelease(item.title);
@@ -215,6 +239,9 @@ let omdbApiKey = '';
 // Weekly metadata cache: key -> { rating, genres, imdbID, imdbUrl, fetchedAt }
 const META_CACHE_PATH = path.join(__dirname, 'ratings-cache.json');
 const META_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// "No rating" results go stale fast (OMDb lags IMDb on new releases),
+// so retry them daily instead of freezing N/A for a week.
+const META_NORATING_TTL_MS = 24 * 60 * 60 * 1000;
 let metaCache = {};
 
 function loadMetaCache() {
@@ -222,6 +249,20 @@ function loadMetaCache() {
         if (fs.existsSync(META_CACHE_PATH)) {
             const parsed = JSON.parse(fs.readFileSync(META_CACHE_PATH, 'utf8'));
             if (parsed && typeof parsed === 'object') metaCache = parsed;
+            // One-time repair: entries cached as "no rating" under the old flat
+            // 7-day TTL are retried on a 24h cycle instead — drop the stale ones.
+            let dropped = 0;
+            for (const key of Object.keys(metaCache)) {
+                const e = metaCache[key];
+                if (e && !e.rating && (Date.now() - (e.fetchedAt || 0)) > META_NORATING_TTL_MS) {
+                    delete metaCache[key];
+                    dropped++;
+                }
+            }
+            if (dropped > 0) {
+                console.log(`Ratings cache: dropped ${dropped} stale no-rating entries for retry.`);
+                saveMetaCache();
+            }
         }
     } catch (err) {
         console.error('Failed to load ratings cache:', err.message);
@@ -240,13 +281,35 @@ function saveMetaCache() {
 // Parse "Movie.Name.2024.1080p.WEB.H264-GROUP" -> { query, year }
 function parseMovieTitle(releaseName) {
     if (!releaseName) return null;
-    const yearMatch = releaseName.match(/\b(19|20)\d{2}\b/);
+    // Prefer a year directly followed by a quality/release tag (handles titles
+    // that themselves contain a year, e.g. "1917.2019.1080p...").
+    const yearRe = /\b(19|20)\d{2}\b/g;
+    let m;
+    let yearMatch = null;
+    let lastMatch = null;
+    while ((m = yearRe.exec(releaseName)) !== null) {
+        if (m.index === 0) continue;
+        const rest = releaseName.slice(m.index + m[0].length);
+        lastMatch = m;
+        if (rest.trim() === '' || /^[.\-_ ]*(1080p|2160p|720p|480p|WEB|BluRay|HDTV|HDCAM|HC|HDRip|BRRip)/i.test(rest)) {
+            yearMatch = m;
+            break;
+        }
+    }
+    if (!yearMatch) yearMatch = lastMatch;
     const year = yearMatch ? yearMatch[0] : null;
     // Title is everything before the year (or before the first quality tag).
-    let head = year ? releaseName.slice(0, yearMatch.index) : releaseName.split(/[._-](1080p|2160p|720p|480p|WEB|BluRay|HDTV|HDCAM|HC|HDRip|BRRip)/i)[0];
+    let head = yearMatch
+        ? releaseName.slice(0, yearMatch.index)
+        : releaseName.split(/[._-](1080p|2160p|720p|480p|WEB|BluRay|HDTV|HDCAM|HC|HDRip|BRRip)/i)[0];
     head = head.replace(/[._]+/g, ' ').replace(/-+/g, ' ').replace(/\s{2,}/g, ' ').trim();
     if (!head) return null;
     return { query: head, year };
+}
+
+// Normalize a title for cross-release comparison: punctuation/case insensitive.
+function normalizeTitleKey(name) {
+    return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 function metaCacheKey(kind, name, year) {
@@ -281,16 +344,30 @@ async function fetchOmdb(query, year, type) {
     }
 }
 
-// Resolve metadata for one item, using the weekly cache. Never throws.
+// Resolve metadata for one item, using the cache. Successful ratings live
+// 7 days; "no rating" results only 24h since OMDb lags behind IMDb. If the
+// year-qualified lookup misses, retry without the year (release-year
+// mismatches are common). Never throws.
 async function resolveMeta(kind, name, year) {
     const key = metaCacheKey(kind, name, year);
     const cached = metaCache[key];
-    if (cached && (Date.now() - (cached.fetchedAt || 0)) < META_CACHE_TTL_MS) {
+    const ttl = cached && cached.rating ? META_CACHE_TTL_MS : META_NORATING_TTL_MS;
+    if (cached && (Date.now() - (cached.fetchedAt || 0)) < ttl) {
         return cached;
     }
     if (!omdbApiKey) return cached || null;
     try {
-        const fresh = await fetchOmdb(name, year, kind === 'series' ? 'series' : 'movie');
+        let fresh = null;
+        try {
+            fresh = await fetchOmdb(name, year, kind === 'series' ? 'series' : 'movie');
+        } catch (err) {
+            if (year) {
+                console.error(`Metadata retry without year [${kind}] "${name}" (was: ${err.message})`);
+                fresh = await fetchOmdb(name, null, kind === 'series' ? 'series' : 'movie');
+            } else {
+                throw err;
+            }
+        }
         metaCache[key] = { ...fresh, fetchedAt: Date.now() };
         saveMetaCache();
         return metaCache[key];
@@ -301,8 +378,9 @@ async function resolveMeta(kind, name, year) {
 }
 
 // Enrich already-sliced top items with rating/genres (concurrency-limited).
-async function enrichWithMeta(items, kind) {
-    const CONCURRENCY = 4;
+async function enrichWithMeta(items, kind, opts = {}) {
+    const CONCURRENCY = opts.concurrency || 4;
+    const PACE_MS = opts.paceMs != null ? opts.paceMs : 250;
     const queue = items.slice();
     async function worker() {
         while (queue.length > 0) {
@@ -321,7 +399,7 @@ async function enrichWithMeta(items, kind) {
             }
             item.meta = name ? await resolveMeta(kind, name, year) : null;
             // Gentle pacing so we stay far under OMDb's free quota.
-            await new Promise(r => setTimeout(r, 250));
+            await new Promise(r => setTimeout(r, PACE_MS));
         }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
@@ -646,6 +724,11 @@ app.get('/api/latest', async (req, res) => {
         const cutoff = now - LATEST_WINDOW_MS;
         const results = list.map(buildTorrentItem).filter(item => item.createdAtTime >= cutoff);
 
+        // Movies get the same IMDb rating/genre line as the top-20 list.
+        if (category === 1 && results.length > 0) {
+            await enrichWithMeta(results, 'movie', { concurrency: 6, paceMs: 120 });
+        }
+
         const payload = { success: true, category, pi, count: results.length, results };
         latestCache.set(key, { fetchedAt: now, payload });
         res.json({ ...payload, cached: false });
@@ -710,6 +793,71 @@ app.get('/api/show', async (req, res) => {
         });
     } catch (err) {
         console.error('Show error:', err);
+        res.status(500).json({ success: false, error: err.stack || err.message });
+    }
+});
+
+// Per-movie release cache: "title|year" -> { fetchedAt, items } (all releases).
+const movieCache = new Map();
+const MOVIE_TTL_MS = 15 * 60 * 1000;
+const MOVIE_PAGE_SIZE = 50;
+
+// All releases of one movie across formats/groups, newest first:
+// GET /api/movie?name=The%20Fix&year=2026&pi=0
+app.get('/api/movie', async (req, res) => {
+    try {
+        const rawName = String(req.query.name || '').trim();
+        const year = String(req.query.year || '').trim() || null;
+        const pi = Math.max(0, parseInt(req.query.pi || '0', 10) || 0);
+        if (!rawName) return res.status(400).json({ success: false, error: 'name parameter is required' });
+
+        const target = normalizeTitleKey(rawName);
+        const key = `${target}|${year || ''}`;
+        const now = Date.now();
+
+        let items = null;
+        const cached = movieCache.get(key);
+        if (cached && (now - cached.fetchedAt) < MOVIE_TTL_MS) {
+            items = cached.items;
+        } else {
+            const all = [];
+            for (let spi = 0; spi < 5; spi++) {
+                const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(rawName)}&oby=created_at&odir=desc&pi=${spi}&ps=100`;
+                const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+                if (!apiRes.ok) {
+                    throw new Error(`Movie fetch failed "${rawName}" pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
+                }
+                const data = await apiRes.json();
+                const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
+                all.push(...list);
+                if (list.length < 100) break;
+            }
+            items = all
+                .map(buildTorrentItem)
+                .filter(item => {
+                    const p = parseMovieTitle(item.title);
+                    if (!p || normalizeTitleKey(p.query) !== target) return false;
+                    if (year && p.year && p.year !== year) return false;
+                    return true;
+                })
+                .sort((a, b) => b.createdAtTime - a.createdAtTime);
+            movieCache.set(key, { fetchedAt: now, items });
+        }
+
+        const pages = Math.max(1, Math.ceil(items.length / MOVIE_PAGE_SIZE));
+        const page = Math.min(pi, pages - 1);
+        res.json({
+            success: true,
+            name: rawName,
+            year,
+            total: items.length,
+            page,
+            pages,
+            cached: !!cached && (now - cached.fetchedAt) < MOVIE_TTL_MS,
+            results: items.slice(page * MOVIE_PAGE_SIZE, page * MOVIE_PAGE_SIZE + MOVIE_PAGE_SIZE)
+        });
+    } catch (err) {
+        console.error('Movie error:', err);
         res.status(500).json({ success: false, error: err.stack || err.message });
     }
 });

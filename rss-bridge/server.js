@@ -124,6 +124,23 @@ function recordDownload(entry, season, episode, title) {
   });
 }
 
+// Backfill download-log records written before resolution tracking existed
+// (mirrors the SPA): derive missing fields from the stored release title.
+function normalizeLog(entry) {
+  let touched = false;
+  for (const r of entry.downloadedReleases || []) {
+    if (r.resolution === undefined && r.title) {
+      r.resolution = detectResolution(r.title);
+      touched = true;
+    }
+    if (r.proper === undefined) {
+      r.proper = isProperRelease(r.title);
+      touched = true;
+    }
+  }
+  return touched;
+}
+
 // Prefer the entry's resolution; fall back to any resolution only if the
 // preferred one hasn't appeared within 24h of first sighting.
 const RES_FALLBACK_MS = 24 * 60 * 60 * 1000;
@@ -208,6 +225,8 @@ async function pollWatchlistOnce() {
         recordDownload(entry, entry.latest.season, entry.latest.episode, entry.latest.title);
         watchlistChanged = true;
       }
+      // Repair legacy log records missing the resolution field.
+      if (normalizeLog(entry)) watchlistChanged = true;
       const candidates = [];
       for (const t of tvItems) {
         const title = t.releaseName || t.title || t.name;
