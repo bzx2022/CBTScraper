@@ -115,6 +115,10 @@ file it replaces into `update-backup/<timestamp>/`, skips all personal state
 `npm install` if dependencies changed. Afterwards restart both processes —
 `StartCBTScraper.bat` for the SPA and `RestartRSSBridge.bat` for the service.
 
+On the first launch after an update, a **What's New** dialog shows that
+release's notes automatically. It can be reopened any time from
+**Settings → Updates → What's New**.
+
 ## Project layout
 
 ```

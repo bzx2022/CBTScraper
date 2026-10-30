@@ -62,7 +62,7 @@ async function checkForUpdate() {
         available,
         url: rel.html_url || null,
         publishedAt: rel.published_at || null,
-        notes: (rel.body || '').slice(0, 2000)
+        notes: (rel.body || '').slice(0, 6000)
     };
 }
 

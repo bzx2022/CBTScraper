@@ -41,7 +41,7 @@
         <div class="flex items-center space-x-2">
             <button id="latest-tv-btn" onclick="openLatest(2)" title="Latest TV (48h)" class="p-2 bg-zinc-800 hover:bg-zinc-700 text-blue-400 rounded-md border border-zinc-700 transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3.5l5 4.5 5-4.5"></path><rect x="2" y="8" width="20" height="13" rx="2"></rect><rect x="5.5" y="11" width="10.5" height="7" rx="1"></rect><circle cx="19" cy="12.5" r="0.75"></circle><circle cx="19" cy="16.5" r="0.75"></circle>
                 </svg>
             </button>
             <button id="latest-movies-btn" onclick="openLatest(1)" title="Latest Movies (48h)" class="p-2 bg-zinc-800 hover:bg-zinc-700 text-purple-400 rounded-md border border-zinc-700 transition">
@@ -196,6 +196,7 @@
                     <div class="px-4 pb-4 flex flex-col space-y-3">
                         <p class="text-xs text-zinc-400" id="update-status">Check GitHub Releases for a newer version.</p>
                         <div class="flex justify-end space-x-2">
+                            <button onclick="openWhatsNew()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">What's New</button>
                             <button onclick="checkForUpdates()" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Check now</button>
                             <button onclick="applyUpdate()" id="update-apply-btn" class="hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition">Download & Install</button>
                         </div>
@@ -217,6 +218,29 @@
                         <div id="error-box" class="bg-dark-900 border border-zinc-800 rounded p-3 font-mono text-xs text-red-400 h-36 overflow-y-auto whitespace-pre-wrap">No errors recorded.</div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- What's New Modal -->
+    <div id="whatsnew-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeWhatsNew()">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg w-[95%] max-w-3xl xl:max-w-4xl p-6 flex flex-col space-y-3 shadow-2xl max-h-[85vh]">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center space-x-2 min-w-0">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                    <h3 class="text-lg font-semibold text-zinc-100 truncate" id="whatsnew-title">What's New</h3>
+                </div>
+                <div class="flex items-center space-x-3 shrink-0">
+                    <a id="whatsnew-link" href="#" target="_blank" rel="noopener" class="hidden text-xs text-blue-400 hover:underline">View on GitHub</a>
+                    <button onclick="closeWhatsNew()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <div id="whatsnew-meta" class="text-xs text-zinc-500"></div>
+            <div id="whatsnew-body" class="flex-1 overflow-y-auto text-xs leading-relaxed space-y-1 min-h-[8rem] pr-1"></div>
+            <div class="flex justify-end">
+                <button onclick="closeWhatsNew()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition">Got it</button>
             </div>
         </div>
     </div>
@@ -426,8 +450,120 @@
             pendingUpdate = null;
         }
 
+        // ---- What's New (release notes) ----
+        let whatsNewCache = { at: 0, data: null };
+
+        function openWhatsNewModal() {
+            const modal = document.getElementById('whatsnew-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeWhatsNew() {
+            const modal = document.getElementById('whatsnew-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        // Minimal, safe Markdown renderer for GitHub release notes.
+        function renderReleaseNotes(md) {
+            const lines = escapeHtml(String(md || '')).split(/\r?\n/);
+            const inline = (s) => s
+                .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-zinc-200 font-semibold">$1</strong>')
+                .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 rounded bg-dark-900 text-zinc-300 font-mono text-[11px]">$1</code>')
+                .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-blue-400 hover:underline">$1</a>');
+            let html = '';
+            let inList = false;
+            const endList = () => { if (inList) { html += '</ul>'; inList = false; } };
+            for (const raw of lines) {
+                const line = raw.replace(/\s+$/, '');
+                if (!line.trim()) { endList(); continue; }
+                const heading = line.match(/^(#{1,4})\s+(.*)$/);
+                if (heading) {
+                    endList();
+                    html += `<div class="mt-4 mb-1 text-sm font-semibold text-zinc-200">${inline(heading[2])}</div>`;
+                    continue;
+                }
+                const bullet = line.match(/^\s*[-*+]\s+(.*)$/);
+                if (bullet) {
+                    if (!inList) { html += '<ul class="list-disc pl-5 space-y-1 text-zinc-400">'; inList = true; }
+                    html += `<li>${inline(bullet[1])}</li>`;
+                    continue;
+                }
+                endList();
+                html += `<p class="text-zinc-400">${inline(line)}</p>`;
+            }
+            endList();
+            return html || '<p class="text-zinc-500">No release notes provided.</p>';
+        }
+
+        function showWhatsNew(data) {
+            document.getElementById('whatsnew-title').textContent =
+                data.latest ? `What's New in v${data.latest}` : "What's New";
+            const meta = [];
+            if (data.publishedAt) meta.push(new Date(data.publishedAt).toLocaleDateString());
+            if (data.current && data.latest === data.current) {
+                meta.push(`You're running v${data.current}`);
+            } else if (data.current) {
+                meta.push(`You're running v${data.current} — v${data.latest} available`);
+            }
+            document.getElementById('whatsnew-meta').textContent = meta.join(' · ');
+            const link = document.getElementById('whatsnew-link');
+            if (data.url) {
+                link.href = data.url;
+                link.classList.remove('hidden');
+            } else {
+                link.classList.add('hidden');
+            }
+            document.getElementById('whatsnew-body').innerHTML = renderReleaseNotes(data.notes);
+            openWhatsNewModal();
+        }
+
+        async function loadWhatsNew(force) {
+            const now = Date.now();
+            if (!force && whatsNewCache.data && (now - whatsNewCache.at) < 5 * 60 * 1000) {
+                return whatsNewCache.data;
+            }
+            const res = await fetch('/api/update/check');
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Update check failed');
+            whatsNewCache = { at: now, data };
+            return data;
+        }
+
+        async function openWhatsNew() {
+            const body = document.getElementById('whatsnew-body');
+            document.getElementById('whatsnew-title').textContent = "What's New";
+            document.getElementById('whatsnew-meta').textContent = '';
+            document.getElementById('whatsnew-link').classList.add('hidden');
+            body.innerHTML = '<p class="text-zinc-500">Loading release notes…</p>';
+            openWhatsNewModal();
+            try {
+                showWhatsNew(await loadWhatsNew(false));
+            } catch (err) {
+                body.innerHTML = '<p class="text-zinc-500">Could not load release notes — check the error log.</p>';
+                logError(err);
+            }
+        }
+
+        // Auto-open once per installed version, after the app has been updated.
+        async function maybeShowWhatsNew() {
+            try {
+                const data = await loadWhatsNew(true);
+                if (!data || !data.notes || !data.latest) return;
+                if (data.current !== data.latest) return; // notes belong to a newer release
+                let seen = null;
+                try { seen = localStorage.getItem('milkie_whatsnew_version'); } catch (_) { /* ignore */ }
+                if (seen === data.current) return;
+                try { localStorage.setItem('milkie_whatsnew_version', data.current); } catch (_) { /* ignore */ }
+                showWhatsNew(data);
+            } catch (_) {
+                // Best effort: stay silent if GitHub is unreachable on startup.
+            }
+        }
+
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { closeSettings(); closeWatchlist(); closeSearch(); closeLatest(); closeShowModal(); }
+            if (e.key === 'Escape') { closeSettings(); closeWhatsNew(); closeWatchlist(); closeSearch(); closeLatest(); closeShowModal(); }
         });
 
         function openWatchlist() {
@@ -460,6 +596,7 @@
 
         let latestCategory = 2;
         let latestPi = 0;
+        let latestPages = 1;
         let lastLatestResults = [];
 
         function openLatest(category) {
@@ -641,7 +778,7 @@
                         <span class="text-zinc-600 hidden 2xl:inline">|</span><span class="text-zinc-500 hidden 2xl:inline" title="${item.createdAt}">${item.createdAt}</span>
                     </span>
                     ${addBtn}
-                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                 `;
                 container.appendChild(card);
             });
@@ -665,22 +802,28 @@
         }
 
         function latestPage(dir) {
-            latestPi = Math.max(0, latestPi + dir);
+            latestPi = Math.max(0, Math.min(latestPi + dir, latestPages - 1));
             fetchLatest();
         }
 
         async function fetchLatest() {
             const container = document.getElementById('latest-container');
             const status = document.getElementById('latest-status');
-            document.getElementById('latest-page').textContent = `Page ${latestPi + 1}`;
-            document.getElementById('latest-prev').disabled = latestPi === 0;
-            document.getElementById('latest-prev').classList.toggle('opacity-40', latestPi === 0);
+            const prevBtn = document.getElementById('latest-prev');
+            const nextBtn = document.getElementById('latest-next');
             container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Loading...</div>';
             try {
                 const res = await fetch(`/api/latest?category=${latestCategory}&pi=${latestPi}`);
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Latest fetch failed');
-                status.textContent = `Last 48 hours, 100 per page — ${data.count} torrent(s)${data.cached ? ' (cached)' : ''}.`;
+                latestPi = data.page;
+                latestPages = data.pages;
+                document.getElementById('latest-page').textContent = `Page ${data.page + 1} of ${data.pages}`;
+                prevBtn.disabled = data.page === 0;
+                prevBtn.classList.toggle('opacity-40', data.page === 0);
+                nextBtn.disabled = data.page >= data.pages - 1;
+                nextBtn.classList.toggle('opacity-40', data.page >= data.pages - 1);
+                status.textContent = `Last 48 hours, 100 per page — ${data.total} torrent(s)${data.cached ? ' (cached)' : ''}.`;
                 renderLatestResults(data.results || []);
             } catch (err) {
                 container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">Load failed — see error log.</div>';
@@ -715,7 +858,7 @@
                         ? `<button onclick="openLatestMovieReleases(${index})" title="Show all releases of this movie" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`
                         : `<button onclick="addLatestToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0 text-xs font-bold">+</button>
                            <button onclick="openLatestShow(${index})" title="Show all episodes" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`}
-                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                     </div>
                     ${isMovie ? `<div class="pl-1 pt-0.5">${metaLine(item.meta)}</div>` : ''}
                 `;
@@ -766,7 +909,7 @@
                     <span class="text-zinc-600 shrink-0">|</span>
                     <span class="text-zinc-500 shrink-0">${item.size}</span>
                     ${addBtn}
-                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                 `;
                 container.appendChild(card);
             });
@@ -852,7 +995,7 @@
                         </span>
                         ${showBtn}
                         ${addBtn}
-                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m4 4V4"></path></svg><span>Download</span></a>` : ''}
+                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                     </div>
                     <div class="pl-10 pr-1 pt-0.5">${metaLine(item.meta)}</div>
                 `;
@@ -1121,6 +1264,7 @@
             refreshSettingsStatus();
             fetchListings();
             fetchWatchlist();
+            maybeShowWhatsNew();
         });
     </script>
 </body>

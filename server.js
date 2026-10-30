@@ -695,43 +695,77 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// Latest-torrents cache: key "category|pi" -> { fetchedAt, payload }.
-// 15-minute TTL so paging back and forth never re-hits milkie.cc.
+// Latest-torrents cache: category -> { fetchedAt, items } (all items in the
+// 48h window). Caching the whole window means paging never re-hits milkie.cc
+// and the API can report an exact page count.
 const latestCache = new Map();
 const LATEST_TTL_MS = 15 * 60 * 1000;
 const LATEST_WINDOW_MS = 48 * 60 * 60 * 1000;
+const LATEST_PAGE_SIZE = 100;
+const LATEST_MAX_PAGES = 10;
+
+async function fetchLatestWindow(category) {
+    const now = Date.now();
+    const cached = latestCache.get(category);
+    if (cached && (now - cached.fetchedAt) < LATEST_TTL_MS) return { entry: cached, fromCache: true };
+
+    const cutoff = now - LATEST_WINDOW_MS;
+    const items = [];
+    let boundaryReached = false;
+    for (let spi = 0; spi < LATEST_MAX_PAGES && !boundaryReached; spi++) {
+        const apiUrl = `https://milkie.cc/api/v1/torrents?oby=created_at&odir=desc&categories=${category}&pi=${spi}&ps=${LATEST_PAGE_SIZE}`;
+        const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+        if (!apiRes.ok) {
+            throw new Error(`Latest fetch failed cat=${category} pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
+        }
+        const data = await apiRes.json();
+        const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
+        if (list.length === 0) break;
+        for (const t of list) {
+            const item = buildTorrentItem(t);
+            // Results are newest-first, so the first old item ends the window.
+            if (item.createdAtTime >= cutoff) items.push(item);
+            else { boundaryReached = true; break; }
+        }
+        if (list.length < LATEST_PAGE_SIZE) boundaryReached = true;
+    }
+
+    const entry = { fetchedAt: now, items };
+    latestCache.set(category, entry);
+    return { entry, fromCache: false };
+}
 
 // Latest torrents from the last 48h, 100 per page: GET /api/latest?category=2&pi=0
 app.get('/api/latest', async (req, res) => {
     try {
         const category = req.query.category === '1' ? 1 : 2;
-        const pi = Math.max(0, parseInt(req.query.pi || '0', 10) || 0);
-        const key = `${category}|${pi}`;
-        const now = Date.now();
+        const requested = Math.max(0, parseInt(req.query.pi || '0', 10) || 0);
 
-        const cached = latestCache.get(key);
-        if (cached && (now - cached.fetchedAt) < LATEST_TTL_MS) {
-            return res.json({ ...cached.payload, cached: true });
-        }
-
-        const apiUrl = `https://milkie.cc/api/v1/torrents?oby=created_at&odir=desc&categories=${category}&pi=${pi}&ps=100`;
-        const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
-        if (!apiRes.ok) {
-            throw new Error(`Latest fetch failed cat=${category} pi=${pi}: status ${apiRes.status} - ${await apiRes.text()}`);
-        }
-        const data = await apiRes.json();
-        const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
-        const cutoff = now - LATEST_WINDOW_MS;
-        const results = list.map(buildTorrentItem).filter(item => item.createdAtTime >= cutoff);
+        const { entry, fromCache } = await fetchLatestWindow(category);
+        const pages = Math.max(1, Math.ceil(entry.items.length / LATEST_PAGE_SIZE));
+        const pi = Math.min(requested, pages - 1);
+        const results = entry.items.slice(pi * LATEST_PAGE_SIZE, pi * LATEST_PAGE_SIZE + LATEST_PAGE_SIZE);
 
         // Movies get the same IMDb rating/genre line as the top-20 list.
-        if (category === 1 && results.length > 0) {
-            await enrichWithMeta(results, 'movie', { concurrency: 6, paceMs: 120 });
+        if (category === 1) {
+            const needMeta = results.filter(r => !r.metaChecked);
+            if (needMeta.length > 0) {
+                await enrichWithMeta(needMeta, 'movie', { concurrency: 6, paceMs: 120 });
+                needMeta.forEach(r => { r.metaChecked = true; });
+            }
         }
 
-        const payload = { success: true, category, pi, count: results.length, results };
-        latestCache.set(key, { fetchedAt: now, payload });
-        res.json({ ...payload, cached: false });
+        res.json({
+            success: true,
+            category,
+            pi,
+            page: pi,
+            pages,
+            total: entry.items.length,
+            count: results.length,
+            cached: fromCache,
+            results
+        });
     } catch (err) {
         console.error('Latest error:', err);
         res.status(500).json({ success: false, error: err.stack || err.message });
