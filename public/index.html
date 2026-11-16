@@ -27,6 +27,13 @@
         .acc-icon { transition: transform 0.3s ease; }
         .acc-open .acc-icon { transform: rotate(180deg); }
         .acc-open .acc-heading { color: #e4e4e7; }
+        .poster-toggle { color: #71717a; background: #27272a; border-color: #3f3f46; }
+        .poster-toggle:hover { color: #e4e4e7; background: #3f3f46; }
+        .poster-toggle.poster-on { color: #34d399; background: rgba(6, 78, 59, 0.45); border-color: #047857; }
+        .poster-img { width: 2.25rem; height: 3.25rem; object-fit: cover; border-radius: 0.25rem; background: #27272a; border: 1px solid #3f3f46; flex: 0 0 auto; }
+        .poster-img.poster-sm { width: 1.75rem; height: 2.5rem; }
+        .poster-toggle-label { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; }
+        .poster-toggle-label input { accent-color: #059669; }
     </style>
 </head>
 <body class="bg-dark-900 text-zinc-100 min-h-screen font-sans flex flex-col justify-between selection:bg-zinc-700 selection:text-white">
@@ -86,7 +93,12 @@
                     <span class="w-2 h-2 rounded-full bg-blue-500"></span>
                     <h2 class="font-medium text-zinc-200">TV Shows (Top 20 Downloaded)</h2>
                 </div>
-                <span id="tv-count" class="text-xs text-zinc-500">0 items</span>
+                <div class="flex items-center space-x-2">
+                    <span id="tv-count" class="text-xs text-zinc-500">0 items</span>
+                    <button type="button" onclick="togglePosterPref('topTv')" data-poster-toggle="topTv" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
+                    </button>
+                </div>
             </div>
             <div id="tv-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-2">
                 <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
@@ -102,7 +114,12 @@
                     <span class="w-2 h-2 rounded-full bg-purple-500"></span>
                     <h2 class="font-medium text-zinc-200">Movies (Top 20 Downloaded)</h2>
                 </div>
-                <span id="movie-count" class="text-xs text-zinc-500">0 items</span>
+                <div class="flex items-center space-x-2">
+                    <span id="movie-count" class="text-xs text-zinc-500">0 items</span>
+                    <button type="button" onclick="togglePosterPref('topMovies')" data-poster-toggle="topMovies" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
+                    </button>
+                </div>
             </div>
             <div id="movie-container" class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 p-4 space-y-2">
                 <div class="flex items-center justify-center h-full text-zinc-500 text-sm">
@@ -123,6 +140,29 @@
                 </button>
             </div>
 
+            <!-- Appearance section -->
+            <div id="acc-appearance" class="border border-zinc-700 rounded-md overflow-hidden">
+                <button onclick="toggleSettingsSection('acc-appearance')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
+                    <span class="acc-heading text-sm font-medium text-zinc-300">Appearance</span>
+                    <span class="flex items-center space-x-2">
+                        <span id="status-posters" class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">Posters</span>
+                        <svg class="acc-icon w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </span>
+                </button>
+                <div class="acc-body">
+                    <div class="px-4 pb-4 flex flex-col space-y-1">
+                        <p class="text-xs text-zinc-400 mb-2">Show poster thumbnails (OMDb artwork) in each area. Changes apply instantly — no refetch.</p>
+                        <label class="poster-toggle-label text-xs text-zinc-300"><span>Top 20 TV</span><input type="checkbox" id="poster-setting-topTv" onchange="setPosterPref('topTv', this.checked)" /></label>
+                        <label class="poster-toggle-label text-xs text-zinc-300"><span>Top 20 Movies</span><input type="checkbox" id="poster-setting-topMovies" onchange="setPosterPref('topMovies', this.checked)" /></label>
+                        <label class="poster-toggle-label text-xs text-zinc-300"><span>Latest TV (48h)</span><input type="checkbox" id="poster-setting-latestTv" onchange="setPosterPref('latestTv', this.checked)" /></label>
+                        <label class="poster-toggle-label text-xs text-zinc-300"><span>Latest Movies (48h)</span><input type="checkbox" id="poster-setting-latestMovies" onchange="setPosterPref('latestMovies', this.checked)" /></label>
+                        <label class="poster-toggle-label text-xs text-zinc-300"><span>Search results</span><input type="checkbox" id="poster-setting-search" onchange="setPosterPref('search', this.checked)" /></label>
+                        <label class="poster-toggle-label text-xs text-zinc-300"><span>Watchlist</span><input type="checkbox" id="poster-setting-watchlist" onchange="setPosterPref('watchlist', this.checked)" /></label>
+                        <label class="poster-toggle-label text-xs text-zinc-300"><span>Episode / release lists</span><input type="checkbox" id="poster-setting-releases" onchange="setPosterPref('releases', this.checked)" /></label>
+                    </div>
+                </div>
+            </div>
+
             <!-- Auth Token section -->
             <div id="acc-token" class="border border-zinc-700 rounded-md overflow-hidden">
                 <button onclick="toggleSettingsSection('acc-token')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
@@ -135,8 +175,10 @@
                 <div class="acc-body">
                     <div class="px-4 pb-4 flex flex-col space-y-3">
                         <p class="text-xs text-zinc-400">Paste your milkie.cc bearer token (DevTools → Network → <code class="text-zinc-300">authorization</code> header):</p>
+                        <div id="token-expiry" class="text-xs text-zinc-500">No token saved.</div>
                         <textarea id="cookie-input" rows="3" class="w-full bg-dark-900 border border-zinc-700 rounded p-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-blue-500" placeholder="eyJhbGciOi..."></textarea>
-                        <div class="flex justify-end">
+                        <div class="flex justify-between items-center">
+                            <button onclick="renewToken()" id="token-renew-btn" title="Refresh the session token now" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Renew now</button>
                             <button onclick="submitCookie()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition">Save & Fetch</button>
                         </div>
                     </div>
@@ -255,6 +297,9 @@
                 </div>
                 <div class="flex items-center space-x-3">
                     <span id="watchlist-count" class="text-xs text-zinc-500">0 shows</span>
+                    <button type="button" onclick="togglePosterPref('watchlist')" data-poster-toggle="watchlist" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
+                    </button>
                     <button onclick="closeWatchlist()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
@@ -272,7 +317,12 @@
     <div id="search-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeSearch()">
         <div class="bg-dark-800 border border-zinc-700 rounded-lg w-[95%] max-w-[1400px] p-6 flex flex-col space-y-3 shadow-2xl max-h-[90vh] overflow-hidden">
             <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-zinc-100">Search milkie.cc</h3>
+                <div class="flex items-center space-x-3">
+                    <h3 class="text-lg font-semibold text-zinc-100">Search milkie.cc</h3>
+                    <button type="button" onclick="togglePosterPref('search')" data-poster-toggle="search" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
+                    </button>
+                </div>
                 <button onclick="closeSearch()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition" title="Close">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
@@ -296,6 +346,9 @@
             <div class="flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-zinc-100" id="latest-title">Latest</h3>
                 <div class="flex items-center space-x-3">
+                    <button type="button" onclick="togglePosterPref(latestCategory === 1 ? 'latestMovies' : 'latestTv')" id="latest-poster-toggle" data-poster-toggle="latestTv" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
+                    </button>
                     <div class="flex items-center space-x-2">
                         <button onclick="latestPage(-1)" id="latest-prev" class="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition">Prev</button>
                         <span id="latest-page" class="text-xs text-zinc-500">Page 1</span>
@@ -321,6 +374,9 @@
             <div class="flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-zinc-100 truncate" id="show-title">Episodes</h3>
                 <div class="flex items-center space-x-3">
+                    <button type="button" onclick="togglePosterPref('releases')" data-poster-toggle="releases" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
+                    </button>
                     <div class="flex items-center space-x-2">
                         <button onclick="showPage(-1)" id="show-prev" class="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition">Prev</button>
                         <span id="show-page" class="text-xs text-zinc-500">Page 1</span>
@@ -364,6 +420,7 @@
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             refreshSettingsStatus();
+            loadTokenStatus();
         }
 
         function closeSettings() {
@@ -394,9 +451,93 @@
         }
 
         function refreshSettingsStatus() {
-            setStatusBadge('status-token', !!document.getElementById('cookie-input').value.trim());
+            // The token badge is owned by renderTokenStatus (it shows expiry).
             setStatusBadge('status-apikey', !!document.getElementById('apikey-input').value.trim());
             setStatusBadge('status-omdb', !!document.getElementById('omdb-input').value.trim());
+        }
+
+        let serverTokenStatus = null;
+
+        function renderTokenStatus(st) {
+            serverTokenStatus = st || null;
+            const badge = document.getElementById('status-token');
+            const el = document.getElementById('token-expiry');
+            if (!badge || !el) return;
+            if (!st || !st.hasToken) {
+                badge.textContent = 'Not set';
+                badge.className = 'text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400';
+                el.className = 'text-xs text-zinc-500';
+                el.textContent = 'No token saved.';
+                return;
+            }
+            if (!st.isJwt) {
+                badge.textContent = 'Set';
+                badge.className = 'text-[11px] px-2 py-0.5 rounded bg-amber-900 text-amber-300';
+                el.className = 'text-xs text-amber-400';
+                el.textContent = 'Saved credential is not a JWT — automatic renewal is unavailable.';
+                return;
+            }
+            const expires = new Date(st.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+            const days = Math.max(0, Math.ceil(st.daysLeft));
+            if (st.expired) {
+                badge.textContent = 'Expired';
+                badge.className = 'text-[11px] px-2 py-0.5 rounded bg-red-900 text-red-300';
+                el.className = 'text-xs text-red-400';
+                el.textContent = `Expired ${expires}. Automatic renewal cannot recover an expired token — paste a fresh one from milkie.cc.`;
+            } else if (st.needsRefresh) {
+                badge.textContent = `${days}d left`;
+                badge.className = 'text-[11px] px-2 py-0.5 rounded bg-amber-900 text-amber-300';
+                el.className = 'text-xs text-amber-400';
+                el.textContent = `Expires ${expires} (${days} days left) — renewal due, refreshing automatically.`;
+            } else {
+                badge.textContent = 'Set';
+                badge.className = 'text-[11px] px-2 py-0.5 rounded bg-emerald-900 text-emerald-300';
+                el.className = 'text-xs text-emerald-400';
+                el.textContent = `Expires ${expires} (${days} days left). Auto-renew is on.`;
+            }
+        }
+
+        async function loadTokenStatus() {
+            try {
+                const res = await fetch('/api/token/status');
+                const data = await res.json();
+                if (data.success) renderTokenStatus(data.status);
+            } catch (_) {
+                // Best effort: the config load already supplies a status.
+            }
+        }
+
+        async function renewToken() {
+            const btn = document.getElementById('token-renew-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            try {
+                const res = await fetch('/api/token/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force: true })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    if (data.status) renderTokenStatus(data.status);
+                    throw new Error(data.error || 'Token renewal failed');
+                }
+                if (data.token) {
+                    document.getElementById('cookie-input').value = data.token;
+                    try { localStorage.setItem('milkie_token', data.token); } catch (_) { /* ignore */ }
+                }
+                if (data.apiKey) {
+                    document.getElementById('apikey-input').value = data.apiKey;
+                    try { localStorage.setItem('milkie_apiKey', data.apiKey); } catch (_) { /* ignore */ }
+                }
+                renderTokenStatus(data.status);
+                refreshSettingsStatus();
+            } catch (err) {
+                logError(err);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
         }
 
         let pendingUpdate = null;
@@ -604,6 +745,7 @@
             latestPi = 0;
             document.getElementById('latest-title').textContent =
                 latestCategory === 2 ? 'Latest TV Shows (48h)' : 'Latest Movies (48h)';
+            syncLatestPosterToggle();
             const modal = document.getElementById('latest-modal');
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -763,10 +905,14 @@
             lastShowResults.forEach((item, index) => {
                 const card = document.createElement('div');
                 card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition flex items-center gap-2 xl:gap-3 whitespace-nowrap overflow-hidden text-xs';
+                const poster = posterEnabled('releases')
+                    ? (showMode === 'movie' ? posterImg('movie', showName, showYear, true) : posterImg('series', showName, null, true))
+                    : '';
                 const addBtn = showMode === 'episodes'
                     ? `<button onclick="addShowToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0 text-xs font-bold">+</button>`
                     : '';
                 card.innerHTML = `
+                    ${poster}
                     <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
                     <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
                     <span class="hidden md:inline-flex items-center gap-2 xl:gap-3 shrink-0">
@@ -843,7 +989,13 @@
             items.forEach((item, index) => {
                 const card = document.createElement('div');
                 card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition text-xs';
+                const poster = isMovie
+                    ? (posterEnabled('latestMovies') ? posterForMovie(item.title) : '')
+                    : (posterEnabled('latestTv') ? posterForSeries(item.title) : '');
                 card.innerHTML = `
+                    <div class="flex ${poster ? 'items-start' : 'items-center'} gap-2 xl:gap-3">
+                    ${poster}
+                    <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 xl:gap-3 whitespace-nowrap overflow-hidden">
                     <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
                     <span class="text-emerald-400 font-medium shrink-0">${item.downloaded} Dl</span>
@@ -860,7 +1012,9 @@
                            <button onclick="openLatestShow(${index})" title="Show all episodes" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`}
                     ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                     </div>
-                    ${isMovie ? `<div class="pl-1 pt-0.5">${metaLine(item.meta)}</div>` : ''}
+                    ${isMovie ? `<div class="pt-0.5">${metaLine(item.meta)}</div>` : ''}
+                    </div>
+                    </div>
                 `;
                 container.appendChild(card);
             });
@@ -895,12 +1049,17 @@
             }
             lastSearchResults.forEach((item, index) => {
                 const card = document.createElement('div');
-                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition flex items-center gap-3 whitespace-nowrap overflow-hidden text-xs';
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition text-xs';
                 const isTv = item.category === 2;
+                const poster = posterEnabled('search') ? posterForItem(item) : '';
                 const addBtn = isTv
                     ? `<button onclick="addSearchToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-emerald-700 text-zinc-300 hover:text-white transition shrink-0 text-xs font-bold">+</button>`
                     : '';
                 card.innerHTML = `
+                    <div class="flex ${poster ? 'items-start' : 'items-center'} gap-3">
+                    ${poster}
+                    <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-3 whitespace-nowrap overflow-hidden">
                     <span class="px-1.5 py-0.5 rounded ${isTv ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'} text-[10px] font-semibold shrink-0">${isTv ? 'TV' : (item.category === 1 ? 'Movie' : 'Other')}</span>
                     <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
                     <span class="text-emerald-400 font-medium shrink-0">${item.downloaded} Dl</span>
@@ -910,6 +1069,9 @@
                     <span class="text-zinc-500 shrink-0">${item.size}</span>
                     ${addBtn}
                     ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
+                    </div>
+                    </div>
+                    </div>
                 `;
                 container.appendChild(card);
             });
@@ -936,6 +1098,99 @@
             return String(s == null ? '' : s)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // ---- Poster thumbnails -------------------------------------------------
+        const POSTER_DEFAULTS = {
+            topTv: true, topMovies: true, latestTv: true, latestMovies: true,
+            search: true, watchlist: true, releases: false
+        };
+        let posterPrefs = { ...POSTER_DEFAULTS };
+
+        function posterEnabled(key) {
+            return !!posterPrefs[key];
+        }
+
+        function posterImg(kind, name, year, small) {
+            if (!name) return '';
+            let src = `/api/poster?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`;
+            if (year) src += `&year=${encodeURIComponent(year)}`;
+            return `<img src="${src}" alt="" loading="lazy" decoding="async" class="poster-img${small ? ' poster-sm' : ''}" onerror="this.style.visibility='hidden'">`;
+        }
+
+        function posterForSeries(title, small) {
+            return posterImg('series', parseSeriesName(title), null, small);
+        }
+
+        function posterForMovie(title, small) {
+            const parsed = parseMovieTitle(title);
+            return parsed ? posterImg('movie', parsed.query, parsed.year, small) : '';
+        }
+
+        function posterForItem(item, small) {
+            if (!item || !item.category) return '';
+            return item.category === 2 ? posterForSeries(item.title, small) : posterForMovie(item.title, small);
+        }
+
+        function syncPosterToggleButtons() {
+            document.querySelectorAll('[data-poster-toggle]').forEach((btn) => {
+                const on = posterEnabled(btn.getAttribute('data-poster-toggle'));
+                btn.classList.toggle('poster-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                btn.title = on ? 'Posters on — click to hide' : 'Posters off — click to show';
+            });
+        }
+
+        function syncLatestPosterToggle() {
+            const btn = document.getElementById('latest-poster-toggle');
+            if (btn) btn.setAttribute('data-poster-toggle', latestCategory === 1 ? 'latestMovies' : 'latestTv');
+            syncPosterToggleButtons();
+        }
+
+        function syncPosterSettings() {
+            const keys = Object.keys(POSTER_DEFAULTS);
+            for (const key of keys) {
+                const el = document.getElementById(`poster-setting-${key}`);
+                if (el) el.checked = posterEnabled(key);
+            }
+            const badge = document.getElementById('status-posters');
+            if (badge) {
+                const on = keys.filter((k) => posterPrefs[k]).length;
+                badge.textContent = on === 0 ? 'All off' : `${on}/${keys.length} on`;
+            }
+        }
+
+        // Rebuild the already-loaded lists from the cached data: toggling never
+        // refetches and, while off, no image elements exist to request artwork.
+        function rerenderPosterAreas() {
+            if (lastTvShows.length > 0) renderList('tv-container', 'tv-count', lastTvShows);
+            if (lastMovies.length > 0) renderList('movie-container', 'movie-count', lastMovies);
+            if (lastLatestResults.length > 0) renderLatestResults(lastLatestResults);
+            if (lastSearchResults.length > 0) renderSearchResults();
+            if (lastWatchlist.length > 0) renderWatchlist(lastWatchlist);
+            if (lastShowResults.length > 0) renderShowResults();
+        }
+
+        async function setPosterPref(key, on) {
+            if (!(key in POSTER_DEFAULTS)) return;
+            posterPrefs = { ...posterPrefs, [key]: !!on };
+            try { localStorage.setItem('milkie_posters', JSON.stringify(posterPrefs)); } catch (_) { /* ignore */ }
+            syncPosterToggleButtons();
+            syncPosterSettings();
+            rerenderPosterAreas();
+            try {
+                await fetch('/api/set-posters', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [key]: !!on })
+                });
+            } catch (err) {
+                logError(err);
+            }
+        }
+
+        function togglePosterPref(key) {
+            setPosterPref(key, !posterPrefs[key]);
         }
 
         function metaLine(meta) {
@@ -970,18 +1225,26 @@
                 const card = document.createElement('div');
                 card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition text-xs';
 
-                const addBtn = (containerId === 'tv-container')
+                const isTvList = containerId === 'tv-container';
+                const poster = isTvList
+                    ? (posterEnabled('topTv') ? posterForSeries(item.title) : '')
+                    : (posterEnabled('topMovies') ? posterForMovie(item.title) : '');
+
+                const addBtn = isTvList
                     ? `<button onclick="addToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0 text-xs font-bold">+</button>`
                     : '';
 
-                const showBtn = (containerId === 'tv-container')
+                const showBtn = isTvList
                     ? `<button onclick="openShowModal(${index})" title="Show all episodes" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`
                     : (containerId === 'movie-container'
                         ? `<button onclick="openTopMovieReleases(${index})" title="Show all releases of this movie" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`
                         : '');
 
                 card.innerHTML = `
-                    <div class="flex items-center gap-2 xl:gap-3 whitespace-nowrap overflow-hidden">
+                    <div class="flex ${poster ? 'items-start' : 'items-center'} gap-2 xl:gap-3">
+                        ${poster}
+                        <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 xl:gap-3 whitespace-nowrap overflow-hidden">
                         <span class="text-xs font-mono text-zinc-500 shrink-0 w-7">#${index + 1}</span>
                         <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
                         <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
@@ -996,8 +1259,10 @@
                         ${showBtn}
                         ${addBtn}
                         ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
+                        </div>
+                        <div class="pt-0.5">${metaLine(item.meta)}</div>
+                        </div>
                     </div>
-                    <div class="pl-10 pr-1 pt-0.5">${metaLine(item.meta)}</div>
                 `;
                 container.appendChild(card);
             });
@@ -1005,6 +1270,7 @@
 
         let lastTvShows = [];
         let lastMovies = [];
+        let lastWatchlist = [];
 
         // Highlight is active only if the episode was detected in the last 3 days.
         // Entries flagged before detection timestamps existed stay highlighted.
@@ -1015,6 +1281,7 @@
         }
 
         function renderWatchlist(list) {
+            lastWatchlist = list || [];
             const container = document.getElementById('watchlist-container');
             const countSpan = document.getElementById('watchlist-count');
             container.innerHTML = '';
@@ -1042,7 +1309,9 @@
                 const resOptions = ['720p', '1080p', '2160p'].map((r) =>
                     `<option value="${r}"${r === res ? ' selected' : ''}>${r}</option>`).join('');
                 const properChecked = entry.autoProper !== false ? ' checked' : '';
+                const poster = posterEnabled('watchlist') ? posterImg('series', entry.displayName, null, true) : '';
                 card.innerHTML = `
+                    ${poster}
                     <span class="text-sm font-medium text-zinc-100 truncate flex-1 min-w-0" title="${entry.displayName}">${entry.displayName}</span>
                     ${badge}
                     <select onchange="updateWatchlistEntry('${entry.id}', { resolution: this.value })" title="Preferred resolution" class="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5 text-[11px] text-zinc-300 shrink-0 focus:outline-none">${resOptions}</select>
@@ -1164,7 +1433,6 @@
 
         async function submitCookie() {
             const cookieVal = document.getElementById('cookie-input').value.trim();
-            if (cookieVal) localStorage.setItem('milkie_token', cookieVal);
             refreshSettingsStatus();
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
@@ -1178,6 +1446,13 @@
                 });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Failed to set token');
+                if (cookieVal) localStorage.setItem('milkie_token', cookieVal);
+                if (data.apiKey) {
+                    document.getElementById('apikey-input').value = data.apiKey;
+                    localStorage.setItem('milkie_apiKey', data.apiKey);
+                }
+                if (data.tokenStatus) renderTokenStatus(data.tokenStatus);
+                refreshSettingsStatus();
                 await fetchListings();
             } catch (err) {
                 logError(err);
@@ -1216,6 +1491,13 @@
         // Auto-restore saved credentials then load listings
         window.addEventListener('DOMContentLoaded', async () => {
             try {
+                try {
+                    const cachedPosters = JSON.parse(localStorage.getItem('milkie_posters') || 'null');
+                    if (cachedPosters && typeof cachedPosters === 'object') {
+                        posterPrefs = { ...POSTER_DEFAULTS, ...cachedPosters };
+                    }
+                } catch (_) { /* ignore corrupt cache */ }
+
                 const savedToken = localStorage.getItem('milkie_token') || '';
                 const savedKey = localStorage.getItem('milkie_apiKey') || '';
                 const savedOmdb = localStorage.getItem('milkie_omdbKey') || '';
@@ -1231,11 +1513,15 @@
                         localStorage.setItem('milkie_token', cfg.token);
                         document.getElementById('cookie-input').value = cfg.token;
                     } else if (savedToken) {
-                        await fetch('/api/set-cookie', {
+                        // The server validates pasted tokens now, so a stale
+                        // browser copy that milkie rejects is simply dropped.
+                        const restoreRes = await fetch('/api/set-cookie', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ cookie: savedToken })
                         });
+                        const restoreData = await restoreRes.json().catch(() => ({ success: false }));
+                        if (!restoreData.success) localStorage.removeItem('milkie_token');
                     }
                     if (cfg.apiKey) {
                         localStorage.setItem('milkie_apiKey', cfg.apiKey);
@@ -1257,11 +1543,19 @@
                             body: JSON.stringify({ omdbKey: savedOmdb })
                         });
                     }
+                    if (cfg.posters && typeof cfg.posters === 'object') {
+                        posterPrefs = { ...POSTER_DEFAULTS, ...cfg.posters };
+                        try { localStorage.setItem('milkie_posters', JSON.stringify(posterPrefs)); } catch (_) { /* ignore */ }
+                    }
+                    if (cfg.tokenStatus) renderTokenStatus(cfg.tokenStatus);
                 }
             } catch (err) {
                 logError(err);
             }
             refreshSettingsStatus();
+            syncPosterToggleButtons();
+            syncPosterSettings();
+            loadTokenStatus();
             fetchListings();
             fetchWatchlist();
             maybeShowWhatsNew();

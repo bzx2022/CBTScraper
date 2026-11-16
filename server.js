@@ -2,6 +2,7 @@ const express = require('express');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const fs = require('fs');
 const path = require('path');
+const auth = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +13,30 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 let sessionToken = '';
 let torrentApiKey = '';
+
+// Accept a bare key or a full `.../torrent?key=...` URL, and decode any
+// percent-encoding so we always store the raw key. URL building re-encodes it,
+// which matters for keys containing '+' (a literal '+' would decode as a space).
+function normalizeApiKey(input) {
+    let s = String(input || '').trim();
+    if (!s) return '';
+    const m = s.match(/[?&]key=([^&\s]+)/i);
+    if (m) s = m[1];
+    try { s = decodeURIComponent(s); } catch (_) { /* keep raw */ }
+    return s.trim();
+}
+
+// Poster thumbnails are opt-in per list. The key order is the Settings order.
+const POSTER_DEFAULTS = {
+    topTv: true,
+    topMovies: true,
+    latestTv: true,
+    latestMovies: true,
+    search: true,
+    watchlist: true,
+    releases: false
+};
+let posterPrefs = { ...POSTER_DEFAULTS };
 
 const WATCHLIST_PATH = path.join(__dirname, 'watchlist.json');
 const TORRENT_DIR = path.join(__dirname, 'torrents');
@@ -166,10 +191,44 @@ function buildAuthHeaders() {
     return headers;
 }
 
-async function downloadTorrentFile(torrentId, releaseName) {
-    const cleanKey = (torrentApiKey || '').replace(/^key=/, '');
-    const url = `https://milkie.cc/api/v1/torrents/${torrentId}/torrent${cleanKey ? `?key=${cleanKey}` : ''}`;
+// The bridge service shares config.json, so either process can renew the
+// token. Re-read it before spending a refresh of our own.
+function reloadTokenFromDisk() {
+    const cfg = auth.readConfig(CONFIG_PATH);
+    if (cfg.sessionToken && cfg.sessionToken !== sessionToken) {
+        sessionToken = cfg.sessionToken;
+        console.log('[auth] Picked up a renewed token from config.json.');
+        return true;
+    }
+    return false;
+}
+
+const authManager = auth.createAuthManager({
+    configPath: CONFIG_PATH,
+    getToken: () => sessionToken,
+    setToken: (token) => { sessionToken = token; }
+});
+
+// milkie.cc call with one transparent renewal on 401. A rejected token is
+// usually just past milkie's own rotation point, so force a refresh once.
+async function milkieFetch(url, { retry = true } = {}) {
     const res = await fetch(url, { headers: buildAuthHeaders() });
+    if (res.status !== 401 || !retry) return res;
+    if (!reloadTokenFromDisk()) {
+        try {
+            await authManager.refreshNow(true);
+        } catch (err) {
+            console.error(`[auth] Token renewal after 401 failed: ${err.message}`);
+            return res;
+        }
+    }
+    return milkieFetch(url, { retry: false });
+}
+
+async function downloadTorrentFile(torrentId, releaseName) {
+    const cleanKey = normalizeApiKey(torrentApiKey);
+    const url = `https://milkie.cc/api/v1/torrents/${torrentId}/torrent${cleanKey ? `?key=${encodeURIComponent(cleanKey)}` : ''}`;
+    const res = await milkieFetch(url);
     if (!res.ok) throw new Error(`Torrent download failed (id ${torrentId}): status ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     const safe = (releaseName || torrentId).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 150) + '.torrent';
@@ -316,6 +375,37 @@ function metaCacheKey(kind, name, year) {
     return `${kind}|${name.toLowerCase()}|${year || ''}`;
 }
 
+// Rewrite an OMDb poster URL to Amazon's 100x150 thumbnail variant (~4-6 KB
+// instead of ~40 KB). Falls back to the original URL when the pattern differs.
+function posterVariant(url) {
+    const s = String(url || '').trim();
+    if (!s || s === 'N/A' || !/^https?:\/\//i.test(s)) return null;
+    if (/\._V1_/.test(s)) return s.replace(/\._V1_.*$/, '') + '._V1_QL75_UX100_CR0,0,100,150_.jpg';
+    return s;
+}
+
+// Small concurrency gate shared by every OMDb lookup (top lists + poster
+// thumbnails) so a page of images cannot burst the free quota.
+function createLimiter(max) {
+    let active = 0;
+    const queue = [];
+    function pump() {
+        while (active < max && queue.length > 0) {
+            const job = queue.shift();
+            active++;
+            Promise.resolve()
+                .then(job.fn)
+                .then(job.resolve, job.reject)
+                .finally(() => { active--; pump(); });
+        }
+    }
+    return (fn) => new Promise((resolve, reject) => {
+        queue.push({ fn, resolve, reject });
+        pump();
+    });
+}
+const omdbLimiter = createLimiter(4);
+
 async function fetchOmdb(query, year, type) {
     const params = new URLSearchParams({ apikey: omdbApiKey, t: query, type });
     if (year) params.append('y', year);
@@ -336,6 +426,7 @@ async function fetchOmdb(query, year, type) {
         return {
             rating: data.imdbRating && data.imdbRating !== 'N/A' ? data.imdbRating : null,
             genres,
+            poster: posterVariant(data.Poster),
             imdbID: data.imdbID || null,
             imdbUrl: data.imdbID ? `https://www.imdb.com/title/${data.imdbID}/` : null
         };
@@ -345,30 +436,38 @@ async function fetchOmdb(query, year, type) {
 }
 
 // Resolve metadata for one item, using the cache. Successful ratings live
-// 7 days; "no rating" results only 24h since OMDb lags behind IMDb. If the
-// year-qualified lookup misses, retry without the year (release-year
+// 7 days; "no rating" results only 24h since OMDb lags behind IMDb. Entries
+// cached before posters existed are refreshed once so they gain the artwork.
+// If the year-qualified lookup misses, retry without the year (release-year
 // mismatches are common). Never throws.
 async function resolveMeta(kind, name, year) {
     const key = metaCacheKey(kind, name, year);
     const cached = metaCache[key];
+    const hasPosterField = !!cached && Object.prototype.hasOwnProperty.call(cached, 'poster');
     const ttl = cached && cached.rating ? META_CACHE_TTL_MS : META_NORATING_TTL_MS;
-    if (cached && (Date.now() - (cached.fetchedAt || 0)) < ttl) {
+    if (cached && hasPosterField && (Date.now() - (cached.fetchedAt || 0)) < ttl) {
         return cached;
     }
     if (!omdbApiKey) return cached || null;
     try {
         let fresh = null;
         try {
-            fresh = await fetchOmdb(name, year, kind === 'series' ? 'series' : 'movie');
+            fresh = await omdbLimiter(() => fetchOmdb(name, year, kind === 'series' ? 'series' : 'movie'));
         } catch (err) {
             if (year) {
                 console.error(`Metadata retry without year [${kind}] "${name}" (was: ${err.message})`);
-                fresh = await fetchOmdb(name, null, kind === 'series' ? 'series' : 'movie');
+                fresh = await omdbLimiter(() => fetchOmdb(name, null, kind === 'series' ? 'series' : 'movie'));
             } else {
                 throw err;
             }
         }
-        metaCache[key] = { ...fresh, fetchedAt: Date.now() };
+        metaCache[key] = {
+            ...(cached || {}),
+            ...fresh,
+            // Keep a previously found poster when OMDb's response omits it.
+            poster: fresh.poster || (cached && cached.poster) || null,
+            fetchedAt: Date.now()
+        };
         saveMetaCache();
         return metaCache[key];
     } catch (err) {
@@ -412,8 +511,13 @@ function loadConfig() {
             const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
             const cfg = JSON.parse(raw);
             if (cfg.sessionToken) sessionToken = cfg.sessionToken;
-            if (cfg.torrentApiKey) torrentApiKey = cfg.torrentApiKey;
+            if (cfg.torrentApiKey) torrentApiKey = normalizeApiKey(cfg.torrentApiKey);
             if (cfg.omdbApiKey) omdbApiKey = cfg.omdbApiKey;
+            if (cfg.posters && typeof cfg.posters === 'object') {
+                for (const key of Object.keys(POSTER_DEFAULTS)) {
+                    if (typeof cfg.posters[key] === 'boolean') posterPrefs[key] = cfg.posters[key];
+                }
+            }
             console.log(`Loaded saved config (token: ${sessionToken ? 'yes' : 'no'}, apiKey: ${torrentApiKey ? 'yes' : 'no'}, omdb: ${omdbApiKey ? 'yes' : 'no'})`);
         }
     } catch (err) {
@@ -421,9 +525,17 @@ function loadConfig() {
     }
 }
 
+// Merge-write: the poster prefs and renewal timestamps (and the bridge's
+// fields) must survive a credential save. Only the fields this process owns
+// are patched in.
 function saveConfig() {
     try {
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify({ sessionToken, torrentApiKey, omdbApiKey }, null, 2), 'utf8');
+        auth.updateConfig(CONFIG_PATH, {
+            sessionToken,
+            torrentApiKey,
+            omdbApiKey,
+            posters: posterPrefs
+        });
     } catch (err) {
         console.error('Failed to save config.json:', err.message);
     }
@@ -440,23 +552,8 @@ async function scrapeCategory(categoryId) {
 
     for (let pi = 0; pi < 2; pi++) {
         const apiUrl = `https://milkie.cc/api/v1/torrents?oby=created_at&odir=desc&categories=${categoryId}&pi=${pi}&ps=100`;
-        
-        const headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*'
-        };
 
-        if (sessionToken) {
-            if (sessionToken.toLowerCase().startsWith('bearer ')) {
-                headers['authorization'] = sessionToken;
-            } else if (sessionToken.includes('.')) {
-                headers['authorization'] = `Bearer ${sessionToken}`;
-            } else {
-                headers['cookie'] = sessionToken;
-            }
-        }
-
-        const res = await fetch(apiUrl, { headers });
+        const res = await milkieFetch(apiUrl);
 
         if (!res.ok) {
             throw new Error(`Failed to fetch API torrents category ${categoryId} pi ${pi}: status ${res.status} - ${await res.text()}`);
@@ -491,8 +588,8 @@ function buildTorrentItem(t) {
 
     let dlUrl = t.id ? `https://milkie.cc/api/v1/torrents/${t.id}/torrent` : '';
     if (torrentApiKey && dlUrl) {
-        const cleanKey = torrentApiKey.replace(/^key=/, '');
-        dlUrl += `?key=${cleanKey}`;
+        const cleanKey = normalizeApiKey(torrentApiKey);
+        if (cleanKey) dlUrl += `?key=${encodeURIComponent(cleanKey)}`;
     }
 
     return {
@@ -511,21 +608,42 @@ function buildTorrentItem(t) {
     };
 }
 
-// API endpoint to set manual token (auto-saved to config.json)
-app.post('/api/set-cookie', (req, res) => {
-    const { cookie } = req.body;
-    if (cookie) {
-        sessionToken = cookie;
-        saveConfig();
-        res.json({ success: true });
-    } else {
-        res.status(400).json({ success: false, error: 'Token string is required' });
+// API endpoint to set manual token (auto-saved to config.json). JWTs are
+// validated against milkie.cc first, and an empty torrent API key is filled
+// from the session response.
+app.post('/api/set-cookie', async (req, res) => {
+    const cookie = String((req.body && (req.body.cookie || req.body.token)) || '').trim();
+    if (!cookie) {
+        return res.status(400).json({ success: false, error: 'Token string is required' });
     }
+    const status = auth.tokenStatus(cookie);
+    let user = null;
+    if (status.isJwt) {
+        try {
+            const data = await auth.validateToken(cookie);
+            user = data.user || null;
+        } catch (err) {
+            return res.status(400).json({ success: false, error: `milkie.cc rejected this token: ${err.message}` });
+        }
+    }
+    sessionToken = cookie;
+    let apiKeyFilled = false;
+    if (!torrentApiKey && user && user.apiKey) {
+        torrentApiKey = normalizeApiKey(user.apiKey);
+        apiKeyFilled = !!torrentApiKey;
+    }
+    saveConfig();
+    res.json({
+        success: true,
+        apiKey: torrentApiKey,
+        apiKeyFilled,
+        tokenStatus: auth.tokenStatus(sessionToken)
+    });
 });
 
 // API endpoint to set torrent API key (auto-saved to config.json)
 app.post('/api/set-apikey', (req, res) => {
-    const { apiKey } = req.body;
+    const apiKey = normalizeApiKey(req.body && req.body.apiKey);
     if (apiKey) {
         torrentApiKey = apiKey;
         saveConfig();
@@ -558,7 +676,79 @@ app.post('/api/set-omdbkey', (req, res) => {
 
 // API endpoint to retrieve saved credentials (local-only app)
 app.get('/api/config', (req, res) => {
-    res.json({ success: true, token: sessionToken, apiKey: torrentApiKey, omdbKey: omdbApiKey });
+    res.json({
+        success: true,
+        token: sessionToken,
+        apiKey: torrentApiKey,
+        omdbKey: omdbApiKey,
+        posters: posterPrefs,
+        tokenStatus: auth.tokenStatus(sessionToken)
+    });
+});
+
+// Partial update of the per-list poster toggles.
+app.post('/api/set-posters', (req, res) => {
+    const body = req.body || {};
+    for (const key of Object.keys(POSTER_DEFAULTS)) {
+        if (typeof body[key] === 'boolean') posterPrefs[key] = body[key];
+    }
+    saveConfig();
+    res.json({ success: true, posters: posterPrefs });
+});
+
+// Session expiry for Settings, plus a manual renewal hook.
+app.get('/api/token/status', (req, res) => {
+    res.json({ success: true, status: auth.tokenStatus(sessionToken) });
+});
+
+app.post('/api/token/refresh', async (req, res) => {
+    try {
+        const force = !req.body || req.body.force !== false;
+        const result = await authManager.refreshNow(force);
+        res.json({
+            success: true,
+            refreshed: !!result.refreshed,
+            token: sessionToken,
+            apiKey: torrentApiKey,
+            status: auth.tokenStatus(sessionToken)
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message, status: auth.tokenStatus(sessionToken) });
+    }
+});
+
+// Poster thumbnail resolver: 302 to a cached OMDb image, or to the bundled
+// placeholder. Existing metadata cache entries are reused, so this shares the
+// same OMDb quota as the ratings/genres lookups.
+const posterInflight = new Map();
+function getPosterMeta(kind, name, year) {
+    const key = metaCacheKey(kind, name, year);
+    const pending = posterInflight.get(key);
+    if (pending) return pending;
+    const job = resolveMeta(kind, name, year).finally(() => posterInflight.delete(key));
+    posterInflight.set(key, job);
+    return job;
+}
+
+app.get('/api/poster', async (req, res) => {
+    const placeholder = '/poster-placeholder.svg';
+    const kind = req.query.kind === 'movie' ? 'movie' : 'series';
+    const name = String(req.query.name || '').trim();
+    const year = String(req.query.year || '').trim() || null;
+    if (!name || !omdbApiKey) {
+        res.setHeader('Cache-Control', 'public, max-age=1800');
+        return res.redirect(302, placeholder);
+    }
+    try {
+        const meta = await getPosterMeta(kind, name, year);
+        const url = meta && meta.poster;
+        res.setHeader('Cache-Control', url ? 'public, max-age=86400' : 'public, max-age=1800');
+        res.redirect(302, url || placeholder);
+    } catch (err) {
+        console.error(`Poster lookup failed [${kind}] "${name}": ${err.message}`);
+        res.setHeader('Cache-Control', 'public, max-age=600');
+        res.redirect(302, placeholder);
+    }
 });
 
 // Auto-updater endpoints (GitHub Releases).
@@ -594,6 +784,12 @@ async function pollForUpdates() {
 }
 setTimeout(pollForUpdates, 30 * 1000);
 setInterval(pollForUpdates, 24 * 60 * 60 * 1000);
+
+// Renew the session before milkie's 30-day rotation window. The bridge does
+// the same against the shared config.json, so an idle SPA is still covered.
+const AUTH_CHECK_MS = 6 * 60 * 60 * 1000;
+setTimeout(() => { authManager.ensureFresh(); }, 5 * 1000);
+setInterval(() => { authManager.ensureFresh(); }, AUTH_CHECK_MS);
 
 // Watchlist endpoints
 app.get('/api/watchlist', (req, res) => {
@@ -678,7 +874,7 @@ app.get('/api/search', async (req, res) => {
         if (!query) return res.status(400).json({ success: false, error: 'query parameter is required' });
 
         const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(query)}&oby=created_at&odir=desc&pi=0&ps=100`;
-        const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+        const apiRes = await milkieFetch(apiUrl);
         if (!apiRes.ok) {
             throw new Error(`Search failed: status ${apiRes.status} - ${await apiRes.text()}`);
         }
@@ -714,7 +910,7 @@ async function fetchLatestWindow(category) {
     let boundaryReached = false;
     for (let spi = 0; spi < LATEST_MAX_PAGES && !boundaryReached; spi++) {
         const apiUrl = `https://milkie.cc/api/v1/torrents?oby=created_at&odir=desc&categories=${category}&pi=${spi}&ps=${LATEST_PAGE_SIZE}`;
-        const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+        const apiRes = await milkieFetch(apiUrl);
         if (!apiRes.ok) {
             throw new Error(`Latest fetch failed cat=${category} pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
         }
@@ -795,7 +991,7 @@ app.get('/api/show', async (req, res) => {
             const all = [];
             for (let spi = 0; spi < 5; spi++) {
                 const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(rawName)}&oby=created_at&odir=desc&pi=${spi}&ps=100`;
-                const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+                const apiRes = await milkieFetch(apiUrl);
                 if (!apiRes.ok) {
                     throw new Error(`Show fetch failed "${rawName}" pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
                 }
@@ -857,7 +1053,7 @@ app.get('/api/movie', async (req, res) => {
             const all = [];
             for (let spi = 0; spi < 5; spi++) {
                 const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(rawName)}&oby=created_at&odir=desc&pi=${spi}&ps=100`;
-                const apiRes = await fetch(apiUrl, { headers: buildAuthHeaders() });
+                const apiRes = await milkieFetch(apiUrl);
                 if (!apiRes.ok) {
                     throw new Error(`Movie fetch failed "${rawName}" pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
                 }

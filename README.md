@@ -23,6 +23,20 @@ exposes new watchlist episodes as a legacy-compatible RSS feed for
   links straight to the IMDb title page). Ratings are cached for 7 days and
   "no rating" results for 24 hours (OMDb lags IMDb on new releases), so missing
   ratings fill in the next day instead of a week later.
+- **Poster thumbnails** — OMDb artwork is shown as lazy-loaded 100×150
+  thumbnails (4–6 KB each) in the top-20 boxes, latest/search results, the
+  watchlist, and release lists. Every area has its own toggle (a small image
+  button in each list header, plus Settings → Appearance), and toggles apply
+  instantly from the data already loaded — switching an area off removes the
+  image elements entirely, so no artwork is requested. Titles OMDb has not
+  indexed yet show a neutral placeholder.
+- **Automatic token renewal** — milkie issues 60-day JWTs. The SPA and the
+  RSS bridge renew the saved token when fewer than 30 days remain (milkie's
+  own rotation window), sharing `config.json` so a renewal from either process
+  is picked up by both. Settings → Auth Token shows the expiry date and days
+  left, with a **Renew now** button. If a request is rejected with 401 the app
+  refreshes once and retries. An already-expired token still needs a manual
+  paste.
 - **Watchlist** — add any TV listing with the `+` button. S/E is parsed from
   the release name; when a newer episode appears in a scrape the entry shows
   a **"New Episode Found"** badge and the `.torrent` is auto-downloaded to
@@ -39,7 +53,8 @@ exposes new watchlist episodes as a legacy-compatible RSS feed for
   for local debugging.
 - **Credential persistence** — auth token, torrent API key, and OMDb key are
   saved to `config.json` (auto-created) and browser `localStorage`, so they
-  survive restarts and reloads.
+  survive restarts and reloads. Saves merge into the existing file, so poster
+  preferences and renewal timestamps are never lost.
 - **RSS bridge (`rss-bridge/`)** — standalone service for uTorrent 2.2.1:
   polls the watchlist independently of the SPA, serves a strict RSS 2.0 feed
   over plain HTTP with the download URL in `<link>`, and archives each file
@@ -68,8 +83,13 @@ Open `http://localhost:3000`, then click the gear icon (top bar) and open each s
 | Torrent API Key     | Your milkie API key (bare key, or the full `…/torrent?key=…` URL — the `key=` value is extracted automatically) |
 | OMDb Key            | Your OMDb key (bare key, or a full `omdbapi.com/…&apikey=…` sample URL) |
 
+Pasted JWTs are validated against milkie.cc before saving (an invalid or
+expired token is rejected with the reason), and an empty Torrent API Key is
+filled automatically from the session response.
+
 Then click **Fetch Listings**. Keys persist in `config.json` and
-`localStorage`.
+`localStorage`. Poster toggles live in **Settings → Appearance** and in each
+list header.
 
 > Local-only app: `config.json`, `watchlist.json`, `ratings-cache.json`,
 > `torrents/` and `torrents_archive/` are git-ignored and never committed.
@@ -123,6 +143,7 @@ release's notes automatically. It can be reopened any time from
 
 ```
 server.js              SPA backend (scrape proxy, enrichment, watchlist API)
+auth.js                Shared JWT decode / renewal helpers (SPA + bridge)
 updater.js             GitHub Releases updater (check / download / apply)
 public/index.html      SPA frontend (dark UI, modals, error log)
 config.json            Local secrets (git-ignored, auto-created)
@@ -156,9 +177,13 @@ rss-bridge/
 | POST   | `/api/watchlist/:id`   | Update entry prefs (`{ resolution, autoProper }`) |
 | DELETE | `/api/watchlist/:id`   | Remove entry |
 | POST   | `/api/watchlist/:id/ack` | Mark latest episode watched |
-| POST   | `/api/set-cookie`      | Save auth token |
+| POST   | `/api/set-cookie`      | Validate + save auth token; auto-fills an empty API key |
 | POST   | `/api/set-apikey`      | Save torrent API key |
 | POST   | `/api/set-omdbkey`     | Save OMDb key |
-| GET    | `/api/config`          | Saved credential status |
+| POST   | `/api/set-posters`     | Update poster toggles (partial `{ topTv: true, … }`) |
+| GET    | `/api/poster`          | 302 to a cached OMDb thumbnail or the placeholder (`?kind=series\|movie&name=…&year=…`) |
+| GET    | `/api/token/status`    | Token expiry (`expiresAt`, `daysLeft`, `expired`, `needsRefresh`) |
+| POST   | `/api/token/refresh`   | Renew the session now (`{ force: true }`) |
+| GET    | `/api/config`          | Saved credential status, poster toggles, token expiry |
 | GET    | `/api/update/check`    | Compare local version with the latest GitHub release |
 | POST   | `/api/update/apply`    | Download and install the latest release |

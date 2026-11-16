@@ -22,6 +22,7 @@ const chokidar = require('chokidar');
 const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+const auth = require('../auth');
 
 const HOST = '127.0.0.1';
 const PORT = process.env.RSS_PORT || 8080;
@@ -176,8 +177,18 @@ function readJsonSafe(p, fallback) {
   }
 }
 
-function authHeaders(sessionToken) {
-  const headers = {
+// Store the raw API key and encode it when building a URL ('+' must not be
+// sent literally, or milkie reads it as a space).
+function normalizeApiKey(input) {
+  let s = String(input || '').trim();
+  if (!s) return '';
+  const m = s.match(/[?&]key=([^&\s]+)/i);
+  if (m) s = m[1];
+  try { s = decodeURIComponent(s); } catch (_) { /* keep raw */ }
+  return s.trim();
+}
+
+function authHeaders(sessionToken) {  const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     Accept: 'application/json, text/plain, */*',
   };
@@ -189,6 +200,30 @@ function authHeaders(sessionToken) {
   return headers;
 }
 
+// --- Session auto-renewal ---------------------------------------------------
+// config.json is shared with the SPA and is the source of truth, so this
+// manager reads the token from disk on every use and writes renewals back.
+const authManager = auth.createAuthManager({
+  configPath: CONFIG_PATH,
+  getToken: () => auth.readConfig(CONFIG_PATH).sessionToken || '',
+  setToken: () => {},
+});
+
+// One transparent renewal when milkie rejects the saved token.
+async function milkieFetch(url) {
+  let cfg = readJsonSafe(CONFIG_PATH, {});
+  let res = await fetch(url, { headers: authHeaders(cfg.sessionToken || '') });
+  if (res.status !== 401) return res;
+  try {
+    await authManager.refreshNow(true);
+  } catch (err) {
+    console.error(`[bridge] Token renewal after 401 failed: ${err.message}`);
+    return res;
+  }
+  cfg = readJsonSafe(CONFIG_PATH, {});
+  return fetch(url, { headers: authHeaders(cfg.sessionToken || '') });
+}
+
 // --- Watchlist poller (independent of the SPA web server) -------------------
 let polling = false;
 
@@ -198,7 +233,7 @@ async function pollWatchlistOnce() {
   try {
     const cfg = readJsonSafe(CONFIG_PATH, {});
     const sessionToken = cfg.sessionToken || '';
-    const torrentApiKey = (cfg.torrentApiKey || '').replace(/^key=/, '');
+    const torrentApiKey = normalizeApiKey(cfg.torrentApiKey);
     const watchlist = readJsonSafe(WATCHLIST_PATH, []);
     if (!Array.isArray(watchlist) || watchlist.length === 0) return;
     if (!sessionToken) {
@@ -210,7 +245,7 @@ async function pollWatchlistOnce() {
     const tvItems = [];
     for (let pi = 0; pi < 2; pi++) {
       const url = `https://milkie.cc/api/v1/torrents?oby=created_at&odir=desc&categories=2&pi=${pi}&ps=100`;
-      const res = await fetch(url, { headers: authHeaders(sessionToken) });
+      const res = await milkieFetch(url);
       if (!res.ok) throw new Error(`TV fetch failed pi=${pi}: status ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data.torrents || data.data || data.results || data.items || [];
@@ -250,7 +285,7 @@ async function pollWatchlistOnce() {
         episode: newest.parsed.episode,
         title: newest.title,
         torrentId: newest.raw.id,
-        downloadUrl: `https://milkie.cc/api/v1/torrents/${newest.raw.id}/torrent${torrentApiKey ? `?key=${torrentApiKey}` : ''}`,
+        downloadUrl: `https://milkie.cc/api/v1/torrents/${newest.raw.id}/torrent${torrentApiKey ? `?key=${encodeURIComponent(torrentApiKey)}` : ''}`,
       };
       watchlistChanged = true;
       // Download preferred resolution immediately; otherwise wait up to 24h.
@@ -263,8 +298,8 @@ async function pollWatchlistOnce() {
       }
       // Download the .torrent bytes via the milkie API and drop into torrents/.
       // chokidar picks the new file up and marks it 'pending' for the RSS feed.
-      const dlUrl = `https://milkie.cc/api/v1/torrents/${best.raw.id}/torrent${torrentApiKey ? `?key=${torrentApiKey}` : ''}`;
-      const dlRes = await fetch(dlUrl, { headers: authHeaders(sessionToken) });
+      const dlUrl = `https://milkie.cc/api/v1/torrents/${best.raw.id}/torrent${torrentApiKey ? `?key=${encodeURIComponent(torrentApiKey)}` : ''}`;
+      const dlRes = await milkieFetch(dlUrl);
       if (!dlRes.ok) {
         console.error(`[bridge] Torrent download failed for ${best.title}: status ${dlRes.status}`);
         continue;
@@ -452,4 +487,7 @@ app.listen(PORT, HOST, () => {
   // First poll shortly after boot, then on the interval.
   setTimeout(pollWatchlistOnce, 10 * 1000);
   setInterval(pollWatchlistOnce, POLL_INTERVAL_MS);
+  // Keep the shared session token alive even when the SPA is closed.
+  setTimeout(() => { authManager.ensureFresh(); }, 5 * 1000);
+  setInterval(() => { authManager.ensureFresh(); }, 6 * 60 * 60 * 1000);
 });
