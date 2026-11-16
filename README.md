@@ -25,11 +25,13 @@ exposes new watchlist episodes as a legacy-compatible RSS feed for
   ratings fill in the next day instead of a week later.
 - **Poster thumbnails** — OMDb artwork is shown as lazy-loaded 100×150
   thumbnails (4–6 KB each) in the top-20 boxes, latest/search results, the
-  watchlist, and release lists. Every area has its own toggle (a small image
-  button in each list header, plus Settings → Appearance), and toggles apply
-  instantly from the data already loaded — switching an area off removes the
-  image elements entirely, so no artwork is requested. Titles OMDb has not
-  indexed yet show a neutral placeholder.
+  watchlist, and release lists. Hovering a thumbnail shows a 300×450 preview
+  beside the cursor, and clicking it opens the full 600×900 poster in a
+  lightbox (Escape or a backdrop click closes it). Every area has its own
+  toggle (a small image button in each list header, plus Settings →
+  Appearance), and toggles apply instantly from the data already loaded —
+  switching an area off removes the image elements entirely, so no artwork is
+  requested. Titles OMDb has not indexed yet show a neutral placeholder.
 - **Automatic token renewal** — milkie issues 60-day JWTs. The SPA and the
   RSS bridge renew the saved token when fewer than 30 days remain (milkie's
   own rotation window), sharing `config.json` so a renewal from either process
@@ -181,7 +183,7 @@ rss-bridge/
 | POST   | `/api/set-apikey`      | Save torrent API key |
 | POST   | `/api/set-omdbkey`     | Save OMDb key |
 | POST   | `/api/set-posters`     | Update poster toggles (partial `{ topTv: true, … }`) |
-| GET    | `/api/poster`          | 302 to a cached OMDb thumbnail or the placeholder (`?kind=series\|movie&name=…&year=…`) |
+| GET    | `/api/poster`          | 302 to a cached OMDb image or the placeholder (`?kind=series\|movie&name=…&year=…&size=thumb\|preview\|full`) |
 | GET    | `/api/token/status`    | Token expiry (`expiresAt`, `daysLeft`, `expired`, `needsRefresh`) |
 | POST   | `/api/token/refresh`   | Renew the session now (`{ force: true }`) |
 | GET    | `/api/config`          | Saved credential status, poster toggles, token expiry |

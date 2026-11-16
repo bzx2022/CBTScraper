@@ -375,12 +375,21 @@ function metaCacheKey(kind, name, year) {
     return `${kind}|${name.toLowerCase()}|${year || ''}`;
 }
 
-// Rewrite an OMDb poster URL to Amazon's 100x150 thumbnail variant (~4-6 KB
-// instead of ~40 KB). Falls back to the original URL when the pattern differs.
-function posterVariant(url) {
+// Amazon serves the same OMDb artwork at any size through the `_V1_` suffix.
+// Thumbnails are ~4-6 KB, the hover preview ~19 KB and the full view ~66 KB.
+const POSTER_VARIANTS = {
+    thumb: '._V1_QL75_UX100_CR0,0,100,150_.jpg',
+    preview: '._V1_QL75_UX300_CR0,0,300,450_.jpg',
+    full: '._V1_QL75_UX600_CR0,0,600,900_.jpg'
+};
+
+// Rewrite an OMDb poster URL to the requested variant. Falls back to the
+// original URL when the Amazon pattern differs.
+function posterVariant(url, size) {
     const s = String(url || '').trim();
     if (!s || s === 'N/A' || !/^https?:\/\//i.test(s)) return null;
-    if (/\._V1_/.test(s)) return s.replace(/\._V1_.*$/, '') + '._V1_QL75_UX100_CR0,0,100,150_.jpg';
+    const suffix = POSTER_VARIANTS[size] || POSTER_VARIANTS.thumb;
+    if (/\._V1_/.test(s)) return s.replace(/\._V1_.*$/, '') + suffix;
     return s;
 }
 
@@ -735,13 +744,14 @@ app.get('/api/poster', async (req, res) => {
     const kind = req.query.kind === 'movie' ? 'movie' : 'series';
     const name = String(req.query.name || '').trim();
     const year = String(req.query.year || '').trim() || null;
+    const size = Object.prototype.hasOwnProperty.call(POSTER_VARIANTS, req.query.size) ? req.query.size : 'thumb';
     if (!name || !omdbApiKey) {
         res.setHeader('Cache-Control', 'public, max-age=1800');
         return res.redirect(302, placeholder);
     }
     try {
         const meta = await getPosterMeta(kind, name, year);
-        const url = meta && meta.poster;
+        const url = meta && meta.poster ? posterVariant(meta.poster, size) : null;
         res.setHeader('Cache-Control', url ? 'public, max-age=86400' : 'public, max-age=1800');
         res.redirect(302, url || placeholder);
     } catch (err) {

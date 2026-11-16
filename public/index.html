@@ -30,8 +30,11 @@
         .poster-toggle { color: #71717a; background: #27272a; border-color: #3f3f46; }
         .poster-toggle:hover { color: #e4e4e7; background: #3f3f46; }
         .poster-toggle.poster-on { color: #34d399; background: rgba(6, 78, 59, 0.45); border-color: #047857; }
-        .poster-img { width: 2.25rem; height: 3.25rem; object-fit: cover; border-radius: 0.25rem; background: #27272a; border: 1px solid #3f3f46; flex: 0 0 auto; }
+        .poster-img { width: 2.25rem; height: 3.25rem; object-fit: cover; border-radius: 0.25rem; background: #27272a; border: 1px solid #3f3f46; flex: 0 0 auto; cursor: zoom-in; }
         .poster-img.poster-sm { width: 1.75rem; height: 2.5rem; }
+        .poster-img:focus-visible { outline: 2px solid #34d399; outline-offset: 2px; }
+        #poster-hover { position: fixed; z-index: 60; width: 300px; height: 450px; object-fit: cover; border-radius: 0.5rem; border: 1px solid #3f3f46; background: #18181b; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65); pointer-events: none; display: none; }
+        #poster-modal-img { max-height: 80vh; max-width: 92vw; object-fit: contain; border-radius: 0.5rem; border: 1px solid #3f3f46; background: #18181b; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7); }
         .poster-toggle-label { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; }
         .poster-toggle-label input { accent-color: #059669; }
     </style>
@@ -129,6 +132,20 @@
         </section>
 
     </main>
+
+    <!-- Hover preview (follows the cursor over a poster thumbnail) -->
+    <img id="poster-hover" alt="" aria-hidden="true" />
+
+    <!-- Full-size poster lightbox -->
+    <div id="poster-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-[60] p-4" onclick="if (event.target === this) closePosterModal()">
+        <div class="relative flex flex-col items-center space-y-3">
+            <img id="poster-modal-img" src="" alt="" />
+            <div id="poster-modal-caption" class="text-sm text-zinc-300 text-center max-w-[92vw] truncate"></div>
+            <button type="button" onclick="closePosterModal()" title="Close (Esc)" class="absolute -top-3 -right-3 p-2 rounded-full bg-dark-800 border border-zinc-700 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+    </div>
 
     <!-- Settings Modal -->
     <div id="settings-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeSettings()">
@@ -704,7 +721,17 @@
         }
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { closeSettings(); closeWhatsNew(); closeWatchlist(); closeSearch(); closeLatest(); closeShowModal(); }
+            if (e.key === 'Escape') {
+                hidePosterHover();
+                closePosterModal();
+                closeSettings(); closeWhatsNew(); closeWatchlist(); closeSearch(); closeLatest(); closeShowModal();
+                return;
+            }
+            const active = document.activeElement;
+            if ((e.key === 'Enter' || e.key === ' ') && active && active.classList && active.classList.contains('poster-img')) {
+                e.preventDefault();
+                openPosterModal(active);
+            }
         });
 
         function openWatchlist() {
@@ -1113,9 +1140,10 @@
 
         function posterImg(kind, name, year, small) {
             if (!name) return '';
+            const caption = year ? `${name} (${year})` : String(name);
             let src = `/api/poster?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`;
             if (year) src += `&year=${encodeURIComponent(year)}`;
-            return `<img src="${src}" alt="" loading="lazy" decoding="async" class="poster-img${small ? ' poster-sm' : ''}" onerror="this.style.visibility='hidden'">`;
+            return `<img src="${src}" alt="" loading="lazy" decoding="async" tabindex="0" role="button" title="Click to enlarge poster" aria-label="Enlarge poster for ${escapeHtml(caption)}" data-poster-kind="${escapeHtml(kind)}" data-poster-name="${escapeHtml(name)}" data-poster-year="${escapeHtml(year || '')}" data-poster-caption="${escapeHtml(caption)}" class="poster-img${small ? ' poster-sm' : ''}" onerror="this.style.visibility='hidden'">`;
         }
 
         function posterForSeries(title, small) {
@@ -1192,6 +1220,115 @@
         function togglePosterPref(key) {
             setPosterPref(key, !posterPrefs[key]);
         }
+
+        // ---- Poster hover preview + full-size lightbox -------------------------
+        const POSTER_HOVER_W = 300;
+        const POSTER_HOVER_H = 450;
+        let posterHoverEl = null;
+
+        function posterUrlFromEl(el, size) {
+            const kind = el.getAttribute('data-poster-kind') || 'series';
+            const name = el.getAttribute('data-poster-name') || '';
+            const year = el.getAttribute('data-poster-year') || '';
+            let src = `/api/poster?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`;
+            if (year) src += `&year=${encodeURIComponent(year)}`;
+            if (size) src += `&size=${encodeURIComponent(size)}`;
+            return src;
+        }
+
+        function posterModalOpen() {
+            const modal = document.getElementById('poster-modal');
+            return !!modal && !modal.classList.contains('hidden');
+        }
+
+        function hidePosterHover() {
+            posterHoverEl = null;
+            const el = document.getElementById('poster-hover');
+            if (!el) return;
+            el.style.display = 'none';
+            el.removeAttribute('src');
+        }
+
+        function positionPosterHover(x, y) {
+            const el = document.getElementById('poster-hover');
+            if (!el || el.style.display === 'none') return;
+            const margin = 8;
+            const offset = 16;
+            let left = x + offset;
+            let top = y + offset;
+            if (left + POSTER_HOVER_W > window.innerWidth - margin) left = x - POSTER_HOVER_W - offset;
+            if (left < margin) left = margin;
+            if (top + POSTER_HOVER_H > window.innerHeight - margin) top = window.innerHeight - POSTER_HOVER_H - margin;
+            if (top < margin) top = margin;
+            el.style.left = `${Math.round(left)}px`;
+            el.style.top = `${Math.round(top)}px`;
+        }
+
+        function showPosterHover(img, x, y) {
+            if (posterModalOpen()) { hidePosterHover(); return; }
+            const el = document.getElementById('poster-hover');
+            if (!el) return;
+            if (posterHoverEl !== img) {
+                posterHoverEl = img;
+                el.src = posterUrlFromEl(img, 'preview');
+            }
+            el.style.display = 'block';
+            positionPosterHover(x, y);
+        }
+
+        function openPosterModal(img) {
+            const modal = document.getElementById('poster-modal');
+            const image = document.getElementById('poster-modal-img');
+            const caption = document.getElementById('poster-modal-caption');
+            if (!modal || !image || !img) return;
+            hidePosterHover();
+            const label = img.getAttribute('data-poster-caption') || '';
+            image.src = posterUrlFromEl(img, 'full');
+            image.alt = label;
+            if (caption) caption.textContent = label;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closePosterModal() {
+            const modal = document.getElementById('poster-modal');
+            const image = document.getElementById('poster-modal-img');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+            if (image) image.removeAttribute('src');
+        }
+
+        document.addEventListener('mouseover', (e) => {
+            const img = e.target.closest && e.target.closest('img.poster-img');
+            if (!img) return;
+            showPosterHover(img, e.clientX, e.clientY);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!posterHoverEl) return;
+            const img = e.target.closest && e.target.closest('img.poster-img');
+            if (img !== posterHoverEl) { hidePosterHover(); return; }
+            positionPosterHover(e.clientX, e.clientY);
+        });
+
+        document.addEventListener('mouseout', (e) => {
+            const img = e.target.closest && e.target.closest('img.poster-img');
+            if (!img || img !== posterHoverEl) return;
+            const to = e.relatedTarget;
+            if (to && img.contains(to)) return;
+            hidePosterHover();
+        });
+
+        document.addEventListener('scroll', hidePosterHover, true);
+
+        document.addEventListener('click', (e) => {
+            const img = e.target.closest && e.target.closest('img.poster-img');
+            if (!img) return;
+            e.preventDefault();
+            openPosterModal(img);
+        });
 
         function metaLine(meta) {
             if (!meta || (!meta.rating && (!meta.genres || meta.genres.length === 0))) {
