@@ -1772,8 +1772,12 @@
                 return '<span class="text-zinc-600">rating / genres unavailable</span>';
             }
             const rating = meta.rating
-                ? `<span class="text-amber-400 font-medium">&#9733; ${escapeHtml(meta.rating)}</span>`
-                : '<span class="text-zinc-600">no rating</span>';
+                ? (meta.imdbUrl
+                    ? `<a href="${meta.imdbUrl}" target="_blank" title="Open on IMDb" class="text-amber-400 hover:underline font-medium">&#9733; ${escapeHtml(meta.rating)}</a>`
+                    : `<span class="text-amber-400 font-medium">&#9733; ${escapeHtml(meta.rating)}</span>`)
+                : (meta.imdbUrl
+                    ? `<a href="${meta.imdbUrl}" target="_blank" title="Open on IMDb" class="text-zinc-500 hover:underline">no rating</a>`
+                    : '<span class="text-zinc-600">no rating</span>');
             const genres = (meta.genres && meta.genres.length > 0)
                 ? ` <span class="text-zinc-600">·</span> <span class="text-zinc-500">${escapeHtml(meta.genres.join(', '))}</span>`
                 : '';
