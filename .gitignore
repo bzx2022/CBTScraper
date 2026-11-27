@@ -6,6 +6,7 @@ rss-bridge/node_modules/
 config.json
 watchlist.json
 ratings-cache.json
+download-history.json
 rss-bridge/db.json
 .env
 

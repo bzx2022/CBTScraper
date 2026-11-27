@@ -30,6 +30,12 @@
         .poster-toggle { color: #71717a; background: #27272a; border-color: #3f3f46; }
         .poster-toggle:hover { color: #e4e4e7; background: #3f3f46; }
         .poster-toggle.poster-on { color: #34d399; background: rgba(6, 78, 59, 0.45); border-color: #047857; }
+        .group-toggle { color: #71717a; background: #27272a; border-color: #3f3f46; }
+        .group-toggle:hover { color: #e4e4e7; background: #3f3f46; }
+        .group-toggle.group-on { color: #7dd3fc; background: rgba(12, 74, 110, 0.45); border-color: #0369a1; }
+        .downloaded-pill { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem; background: rgba(6, 78, 59, 0.6); border: 1px solid rgba(4, 120, 87, 0.7); color: #6ee7b7; font-size: 10px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+        #toast { transition: opacity 0.2s ease, transform 0.2s ease; }
+        #toast.toast-hidden { opacity: 0; transform: translateY(0.5rem); pointer-events: none; }
         .poster-img { width: 2.25rem; height: 3.25rem; object-fit: cover; border-radius: 0.25rem; background: #27272a; border: 1px solid #3f3f46; flex: 0 0 auto; cursor: zoom-in; }
         .poster-img.poster-sm { width: 1.75rem; height: 2.5rem; }
         .poster-img:focus-visible { outline: 2px solid #34d399; outline-offset: 2px; }
@@ -98,6 +104,9 @@
                 </div>
                 <div class="flex items-center space-x-2">
                     <span id="tv-count" class="text-xs text-zinc-500">0 items</span>
+                    <button type="button" onclick="toggleGroupPref('topTv')" data-group-toggle="topTv" title="Group duplicate shows" aria-pressed="true" class="group-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5"></path></svg>
+                    </button>
                     <button type="button" onclick="togglePosterPref('topTv')" data-poster-toggle="topTv" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
                     </button>
@@ -119,6 +128,9 @@
                 </div>
                 <div class="flex items-center space-x-2">
                     <span id="movie-count" class="text-xs text-zinc-500">0 items</span>
+                    <button type="button" onclick="toggleGroupPref('topMovies')" data-group-toggle="topMovies" title="Group duplicate movies" aria-pressed="true" class="group-toggle p-1.5 rounded border transition shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5"></path></svg>
+                    </button>
                     <button type="button" onclick="togglePosterPref('topMovies')" data-poster-toggle="topMovies" title="Show posters" class="poster-toggle p-1.5 rounded border transition shrink-0">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
                     </button>
@@ -147,6 +159,32 @@
         </div>
     </div>
 
+    <!-- Grouped download picker -->
+    <div id="download-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-[55] p-4" onclick="if (event.target === this) closeDownloadModal()">
+        <div class="bg-dark-800 border border-zinc-700 rounded-lg w-[95%] max-w-4xl p-6 flex flex-col space-y-3 shadow-2xl max-h-[90vh] overflow-hidden">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <h3 id="download-title" class="text-lg font-semibold text-zinc-100 truncate">Download</h3>
+                    <div id="download-subtitle" class="text-xs text-zinc-500 truncate"></div>
+                </div>
+                <button onclick="closeDownloadModal()" class="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition shrink-0" title="Close">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <button type="button" id="download-all-btn" onclick="downloadAllGroup()" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg>
+                    <span>Download all</span>
+                </button>
+                <span id="download-status" class="text-xs text-zinc-500"></span>
+            </div>
+            <div id="download-container" class="flex-1 overflow-y-auto space-y-3 min-h-[10rem] pr-1"></div>
+        </div>
+    </div>
+
+    <!-- Lightweight result/status toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-[70] max-w-md px-4 py-3 rounded-lg border border-zinc-700 bg-dark-800 text-sm text-zinc-200 shadow-2xl toast-hidden"></div>
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="if (event.target === this) closeSettings()">
         <div class="bg-dark-800 border border-zinc-700 rounded-lg max-w-2xl xl:max-w-4xl w-full p-6 flex flex-col space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -162,6 +200,7 @@
                 <button onclick="toggleSettingsSection('acc-appearance')" class="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/60 transition">
                     <span class="acc-heading text-sm font-medium text-zinc-300">Appearance</span>
                     <span class="flex items-center space-x-2">
+                        <span id="status-grouping" class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">Grouping</span>
                         <span id="status-posters" class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">Posters</span>
                         <svg class="acc-icon w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </span>
@@ -176,6 +215,11 @@
                         <label class="poster-toggle-label text-xs text-zinc-300"><span>Search results</span><input type="checkbox" id="poster-setting-search" onchange="setPosterPref('search', this.checked)" /></label>
                         <label class="poster-toggle-label text-xs text-zinc-300"><span>Watchlist</span><input type="checkbox" id="poster-setting-watchlist" onchange="setPosterPref('watchlist', this.checked)" /></label>
                         <label class="poster-toggle-label text-xs text-zinc-300"><span>Episode / release lists</span><input type="checkbox" id="poster-setting-releases" onchange="setPosterPref('releases', this.checked)" /></label>
+                        <div class="pt-3 mt-2 border-t border-zinc-800">
+                            <p class="text-xs text-zinc-400 mb-2">Group duplicate top-20 releases (episodes, release groups, movie resolutions) into one row. Changes apply instantly — no refetch.</p>
+                            <label class="poster-toggle-label text-xs text-zinc-300"><span>Group Top 20 TV</span><input type="checkbox" id="group-setting-topTv" onchange="setGroupPref('topTv', this.checked)" /></label>
+                            <label class="poster-toggle-label text-xs text-zinc-300"><span>Group Top 20 Movies</span><input type="checkbox" id="group-setting-topMovies" onchange="setGroupPref('topMovies', this.checked)" /></label>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -724,6 +768,7 @@
             if (e.key === 'Escape') {
                 hidePosterHover();
                 closePosterModal();
+                closeDownloadModal();
                 closeSettings(); closeWhatsNew(); closeWatchlist(); closeSearch(); closeLatest(); closeShowModal();
                 return;
             }
@@ -940,7 +985,8 @@
                     : '';
                 card.innerHTML = `
                     ${poster}
-                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                    <a href="https://milkie.cc${item.href}" target="_blank" title="${escapeHtml(item.title)}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${escapeHtml(item.title)}</a>
+                    ${downloadedPill(item)}
                     <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
                     <span class="hidden md:inline-flex items-center gap-2 xl:gap-3 shrink-0">
                         <span class="text-zinc-600">|</span><span class="text-zinc-400" title="Seeders">S: ${item.seeders}</span>
@@ -951,7 +997,7 @@
                         <span class="text-zinc-600 hidden 2xl:inline">|</span><span class="text-zinc-500 hidden 2xl:inline" title="${item.createdAt}">${item.createdAt}</span>
                     </span>
                     ${addBtn}
-                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" ${downloadAttrs(item, showMode === 'movie' ? 'movie' : 'tv')} title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                 `;
                 container.appendChild(card);
             });
@@ -1024,7 +1070,8 @@
                     ${poster}
                     <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 xl:gap-3 whitespace-nowrap overflow-hidden">
-                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                    <a href="https://milkie.cc${item.href}" target="_blank" title="${escapeHtml(item.title)}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${escapeHtml(item.title)}</a>
+                    ${downloadedPill(item)}
                     <span class="text-emerald-400 font-medium shrink-0">${item.downloaded} Dl</span>
                     <span class="hidden md:inline-flex items-center gap-2 xl:gap-3 shrink-0">
                         <span class="text-zinc-600">|</span><span class="text-zinc-400">S: ${item.seeders}</span>
@@ -1037,7 +1084,7 @@
                         ? `<button onclick="openLatestMovieReleases(${index})" title="Show all releases of this movie" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`
                         : `<button onclick="addLatestToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0 text-xs font-bold">+</button>
                            <button onclick="openLatestShow(${index})" title="Show all episodes" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`}
-                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" ${downloadAttrs(item, isMovie ? 'movie' : 'tv')} title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                     </div>
                     ${isMovie ? `<div class="pt-0.5">${metaLine(item.meta)}</div>` : ''}
                     </div>
@@ -1088,14 +1135,15 @@
                     <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-3 whitespace-nowrap overflow-hidden">
                     <span class="px-1.5 py-0.5 rounded ${isTv ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'} text-[10px] font-semibold shrink-0">${isTv ? 'TV' : (item.category === 1 ? 'Movie' : 'Other')}</span>
-                    <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                    <a href="https://milkie.cc${item.href}" target="_blank" title="${escapeHtml(item.title)}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${escapeHtml(item.title)}</a>
+                    ${downloadedPill(item)}
                     <span class="text-emerald-400 font-medium shrink-0">${item.downloaded} Dl</span>
                     <span class="text-zinc-600 shrink-0">|</span>
                     <span class="text-zinc-400 shrink-0">S: ${item.seeders}</span>
                     <span class="text-zinc-600 shrink-0">|</span>
                     <span class="text-zinc-500 shrink-0">${item.size}</span>
                     ${addBtn}
-                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
+                    ${item.downloadUrl ? `<a href="${item.downloadUrl}" ${downloadAttrs(item, isTv ? 'tv' : 'movie')} title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                     </div>
                     </div>
                     </div>
@@ -1133,6 +1181,14 @@
             search: true, watchlist: true, releases: false
         };
         let posterPrefs = { ...POSTER_DEFAULTS };
+
+        // ---- Top-20 grouping --------------------------------------------------
+        const GROUP_DEFAULTS = { topTv: true, topMovies: true };
+        let groupPrefs = { ...GROUP_DEFAULTS };
+
+        function groupEnabled(key) {
+            return !!groupPrefs[key];
+        }
 
         function posterEnabled(key) {
             return !!posterPrefs[key];
@@ -1191,8 +1247,8 @@
         // Rebuild the already-loaded lists from the cached data: toggling never
         // refetches and, while off, no image elements exist to request artwork.
         function rerenderPosterAreas() {
-            if (lastTvShows.length > 0) renderList('tv-container', 'tv-count', lastTvShows);
-            if (lastMovies.length > 0) renderList('movie-container', 'movie-count', lastMovies);
+            if (lastTvShows.length > 0 || lastTvGroups.length > 0) renderTopTv();
+            if (lastMovies.length > 0 || lastMovieGroups.length > 0) renderTopMovies();
             if (lastLatestResults.length > 0) renderLatestResults(lastLatestResults);
             if (lastSearchResults.length > 0) renderSearchResults();
             if (lastWatchlist.length > 0) renderWatchlist(lastWatchlist);
@@ -1219,6 +1275,51 @@
 
         function togglePosterPref(key) {
             setPosterPref(key, !posterPrefs[key]);
+        }
+
+        function syncGroupToggleButtons() {
+            document.querySelectorAll('[data-group-toggle]').forEach((btn) => {
+                const on = groupEnabled(btn.getAttribute('data-group-toggle'));
+                btn.classList.toggle('group-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                btn.title = on ? 'Grouping on — click to show every release separately' : 'Grouping off — click to group duplicate releases';
+            });
+        }
+
+        function syncGroupSettings() {
+            const keys = Object.keys(GROUP_DEFAULTS);
+            for (const key of keys) {
+                const el = document.getElementById(`group-setting-${key}`);
+                if (el) el.checked = groupEnabled(key);
+            }
+            const badge = document.getElementById('status-grouping');
+            if (badge) {
+                const on = keys.filter((k) => groupPrefs[k]).length;
+                badge.textContent = on === 0 ? 'Grouping off' : `Grouping ${on}/${keys.length}`;
+            }
+        }
+
+        async function setGroupPref(key, on) {
+            if (!(key in GROUP_DEFAULTS)) return;
+            groupPrefs = { ...groupPrefs, [key]: !!on };
+            try { localStorage.setItem('milkie_grouping', JSON.stringify(groupPrefs)); } catch (_) { /* ignore */ }
+            syncGroupToggleButtons();
+            syncGroupSettings();
+            if (key === 'topTv' && (lastTvGroups.length > 0 || lastTvShows.length > 0)) renderTopTv();
+            else if (key === 'topMovies' && (lastMovieGroups.length > 0 || lastMovies.length > 0)) renderTopMovies();
+            try {
+                await fetch('/api/set-grouping', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [key]: !!on })
+                });
+            } catch (err) {
+                logError(err);
+            }
+        }
+
+        function toggleGroupPref(key) {
+            setGroupPref(key, !groupPrefs[key]);
         }
 
         // ---- Poster hover preview + full-size lightbox -------------------------
@@ -1330,6 +1431,221 @@
             openPosterModal(img);
         });
 
+        // ---- Download badges, batch downloads, toasts --------------------------
+        function modalOpen(id) {
+            const el = document.getElementById(id);
+            return !!el && !el.classList.contains('hidden');
+        }
+
+        function downloadedPill(item, label) {
+            if (!item || !item.alreadyDownloaded) return '';
+            return `<span class="downloaded-pill" title="Already downloaded">${escapeHtml(label || 'Downloaded')}</span>`;
+        }
+
+        function groupDownloadedPill(group) {
+            if (!group || !group.alreadyDownloaded) return '';
+            const label = group.alreadyDownloadedCount === group.releaseCount
+                ? 'Downloaded'
+                : `Downloaded ${group.alreadyDownloadedCount}/${group.releaseCount}`;
+            return `<span class="downloaded-pill" title="Release(s) already downloaded">${escapeHtml(label)}</span>`;
+        }
+
+        function releaseGroupFromTitle(title) {
+            const m = String(title || '').match(/-([A-Za-z0-9@._]+)$/);
+            return m ? m[1] : '';
+        }
+
+        function downloadAttrs(item, kind) {
+            return `data-download-id="${escapeHtml(item.torrentId || '')}" data-download-title="${escapeHtml(item.title || '')}" data-download-kind="${escapeHtml(kind || 'other')}" data-download-resolution="${escapeHtml(item.resolution || '')}"`;
+        }
+
+        let toastTimer = null;
+        function showToast(message, isError) {
+            const el = document.getElementById('toast');
+            if (!el) return;
+            el.textContent = message;
+            el.classList.remove('toast-hidden');
+            el.classList.toggle('border-red-700', !!isError);
+            el.classList.toggle('text-red-300', !!isError);
+            el.classList.toggle('border-emerald-700', !isError);
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { el.classList.add('toast-hidden'); }, 7000);
+        }
+
+        function markItemsDownloadedLocally(items) {
+            const ids = new Set();
+            for (const it of (items || [])) {
+                if (it && it.torrentId) ids.add(String(it.torrentId));
+            }
+            if (ids.size === 0) return;
+            const apply = (arr) => {
+                for (const item of (arr || [])) {
+                    if (item && ids.has(String(item.torrentId))) item.alreadyDownloaded = true;
+                }
+            };
+            apply(lastTvShows);
+            apply(lastMovies);
+            apply(lastLatestResults);
+            apply(lastSearchResults);
+            apply(lastShowResults);
+            for (const groups of [lastTvGroups, lastMovieGroups]) {
+                for (const group of (groups || [])) {
+                    for (const item of (group.items || [])) {
+                        if (ids.has(String(item.torrentId))) item.alreadyDownloaded = true;
+                    }
+                    group.alreadyDownloadedCount = (group.items || []).filter(i => i.alreadyDownloaded).length;
+                    group.alreadyDownloaded = group.alreadyDownloadedCount > 0;
+                }
+            }
+            if (lastTvGroups.length > 0) renderTopTv();
+            if (lastMovieGroups.length > 0) renderTopMovies();
+            if (modalOpen('latest-modal')) renderLatestResults(lastLatestResults);
+            if (modalOpen('search-modal')) renderSearchResults();
+            if (modalOpen('show-modal')) renderShowResults();
+            if (downloadModalOpen()) renderDownloadModal();
+        }
+
+        // Record direct browser downloads for the "Downloaded" pills. The click
+        // itself is left alone so the .torrent still reaches the browser.
+        document.addEventListener('click', (e) => {
+            const link = e.target.closest && e.target.closest('a[data-download-id]');
+            if (!link) return;
+            const torrentId = link.getAttribute('data-download-id');
+            if (!torrentId) return;
+            const payload = {
+                torrentId,
+                title: link.getAttribute('data-download-title') || '',
+                kind: link.getAttribute('data-download-kind') || 'other',
+                resolution: link.getAttribute('data-download-resolution') || ''
+            };
+            fetch('/api/mark-downloaded', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                keepalive: true
+            }).then(r => r.json()).then((data) => {
+                if (data.success) markItemsDownloadedLocally([{ torrentId }]);
+            }).catch((err) => logError(err));
+        });
+
+        // ---- Grouped download picker ------------------------------------------
+        let downloadGroupKind = 'tv';
+        let downloadGroupIndex = -1;
+
+        function downloadModalOpen() {
+            return modalOpen('download-modal');
+        }
+
+        function currentDownloadGroup() {
+            const list = downloadGroupKind === 'movie' ? lastMovieGroups : lastTvGroups;
+            return list[downloadGroupIndex] || null;
+        }
+
+        function openGroupDownloadModal(kind, index) {
+            downloadGroupKind = kind === 'movie' ? 'movie' : 'tv';
+            downloadGroupIndex = index;
+            const group = currentDownloadGroup();
+            if (!group) return;
+            hidePosterHover();
+            document.getElementById('download-title').textContent =
+                `${group.title}${group.year ? ` (${group.year})` : ''}`;
+            const modal = document.getElementById('download-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            renderDownloadModal();
+        }
+
+        function closeDownloadModal() {
+            const modal = document.getElementById('download-modal');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function downloadReleaseRow(item, kind) {
+            const bits = [
+                item.resolution || '',
+                releaseGroupFromTitle(item.title) ? `-${releaseGroupFromTitle(item.title)}` : '',
+                item.size || '',
+                `S: ${item.seeders != null ? item.seeders : 0}`,
+                `${item.downloaded != null ? item.downloaded : 0} Dl`
+            ].filter(Boolean).join(' · ');
+            return `<div class="px-3 py-2 flex items-center gap-3 text-xs whitespace-nowrap overflow-hidden">
+                <a href="https://milkie.cc${item.href}" target="_blank" title="${escapeHtml(item.title)}" class="text-blue-400 hover:underline truncate flex-1 min-w-0">${escapeHtml(item.title)}</a>
+                <span class="text-zinc-500 shrink-0 hidden md:inline">${escapeHtml(bits)}</span>
+                ${downloadedPill(item)}
+                ${item.downloadUrl ? `<a href="${item.downloadUrl}" ${downloadAttrs(item, kind)} title="Download .torrent" class="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-medium transition shrink-0">Download</a>` : ''}
+            </div>`;
+        }
+
+        function renderDownloadModal() {
+            const group = currentDownloadGroup();
+            if (!group) return;
+            const container = document.getElementById('download-container');
+            const subtitle = document.getElementById('download-subtitle');
+            const status = document.getElementById('download-status');
+            const allBtn = document.getElementById('download-all-btn');
+            const entries = group.kind === 'tv' ? (group.episodes || []) : (group.resolutions || []);
+            subtitle.textContent = group.kind === 'tv'
+                ? `${group.episodeCount} episode(s) · ${group.releaseCount} release(s) in this top-20 group`
+                : `${group.resolutionCount} resolution(s) · ${group.releaseCount} release(s) in this top-20 group`;
+            const pending = entries.map(e => e && e.best).filter(i => i && !i.alreadyDownloaded);
+            allBtn.disabled = pending.length === 0;
+            allBtn.querySelector('span').textContent = group.kind === 'tv'
+                ? 'Download all episodes' : 'Download all resolutions';
+            status.textContent = pending.length === 0
+                ? 'Everything in this group is already downloaded.'
+                : `${pending.length} item(s) not downloaded yet — files are saved to the torrents folder.`;
+            container.innerHTML = entries.map((entry) => {
+                const heading = group.kind === 'tv' ? entry.tag : entry.resolution;
+                const rows = (entry.releases || []).map(item => downloadReleaseRow(item, group.kind)).join('');
+                return `<div class="border border-zinc-800 rounded-md overflow-hidden">
+                    <div class="px-3 py-2 bg-zinc-800/60 flex items-center justify-between gap-3 text-xs">
+                        <span class="font-semibold text-zinc-200">${escapeHtml(heading)}</span>
+                        <span class="text-zinc-500">${entry.releases.length} release(s)</span>
+                    </div>
+                    <div class="divide-y divide-zinc-800/60">${rows}</div>
+                </div>`;
+            }).join('');
+        }
+
+        async function downloadAllGroup() {
+            const group = currentDownloadGroup();
+            if (!group) return;
+            const entries = group.kind === 'tv' ? (group.episodes || []) : (group.resolutions || []);
+            const pending = entries.map(e => e && e.best).filter(i => i && !i.alreadyDownloaded);
+            if (pending.length === 0) {
+                showToast('Everything in this group is already downloaded.');
+                return;
+            }
+            const btn = document.getElementById('download-all-btn');
+            const status = document.getElementById('download-status');
+            btn.disabled = true;
+            status.textContent = `Downloading ${pending.length} file(s)...`;
+            try {
+                const res = await fetch('/api/download-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        kind: group.kind,
+                        items: pending.map(i => ({ torrentId: i.torrentId, title: i.title, resolution: i.resolution }))
+                    })
+                });
+                const data = await res.json();
+                const saved = data.saved || [];
+                const failed = data.failed || [];
+                if (saved.length === 0) throw new Error(data.error || 'No torrents could be downloaded');
+                markItemsDownloadedLocally(saved);
+                showToast(`Saved ${saved.length} torrent(s) to the torrents folder${failed.length ? `; ${failed.length} failed` : ''}.`, failed.length > 0 && saved.length === 0);
+            } catch (err) {
+                logError(err);
+                showToast(err.message, true);
+            } finally {
+                btn.disabled = false;
+                if (downloadModalOpen()) renderDownloadModal();
+            }
+        }
+
         function metaLine(meta) {
             if (!meta || (!meta.rating && (!meta.genres || meta.genres.length === 0))) {
                 return '<div class="text-[11px] text-zinc-600 truncate">rating / genres unavailable</div>';
@@ -1363,6 +1679,7 @@
                 card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition text-xs';
 
                 const isTvList = containerId === 'tv-container';
+                const kind = isTvList ? 'tv' : 'movie';
                 const poster = isTvList
                     ? (posterEnabled('topTv') ? posterForSeries(item.title) : '')
                     : (posterEnabled('topMovies') ? posterForMovie(item.title) : '');
@@ -1383,7 +1700,8 @@
                         <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 xl:gap-3 whitespace-nowrap overflow-hidden">
                         <span class="text-xs font-mono text-zinc-500 shrink-0 w-7">#${index + 1}</span>
-                        <a href="https://milkie.cc${item.href}" target="_blank" title="${item.title}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${item.title}</a>
+                        <a href="https://milkie.cc${item.href}" target="_blank" title="${escapeHtml(item.title)}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${escapeHtml(item.title)}</a>
+                        ${downloadedPill(item)}
                         <span class="text-emerald-400 font-medium shrink-0" title="Amount Downloaded">${item.downloaded} Dl</span>
                         <span class="hidden md:inline-flex items-center gap-2 xl:gap-3 shrink-0">
                             <span class="text-zinc-600">|</span><span class="text-zinc-400" title="Seeders">S: ${item.seeders}</span>
@@ -1395,7 +1713,7 @@
                         </span>
                         ${showBtn}
                         ${addBtn}
-                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
+                        ${item.downloadUrl ? `<a href="${item.downloadUrl}" ${downloadAttrs(item, kind)} title="Download .torrent" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></a>` : ''}
                         </div>
                         <div class="pt-0.5">${metaLine(item.meta)}</div>
                         </div>
@@ -1407,7 +1725,136 @@
 
         let lastTvShows = [];
         let lastMovies = [];
+        let lastTvGroups = [];
+        let lastMovieGroups = [];
         let lastWatchlist = [];
+
+        function renderTopTv() {
+            if (lastTvGroups.length > 0 && groupEnabled('topTv')) {
+                renderGroupedList('tv-container', 'tv-count', lastTvGroups, 'tv');
+            } else {
+                renderList('tv-container', 'tv-count', lastTvShows);
+            }
+        }
+
+        function renderTopMovies() {
+            if (lastMovieGroups.length > 0 && groupEnabled('topMovies')) {
+                renderGroupedList('movie-container', 'movie-count', lastMovieGroups, 'movie');
+            } else {
+                renderList('movie-container', 'movie-count', lastMovies);
+            }
+        }
+
+        function groupEpisodeSummary(group) {
+            const tags = (group.episodes || []).map(e => e.tag);
+            let text;
+            if (tags.length <= 6) text = tags.join(', ');
+            else text = `${tags.slice(0, 5).join(', ')} +${tags.length - 5} more`;
+            if (group.releaseCount > tags.length) {
+                text += ` · ${group.releaseCount} releases`;
+            }
+            return text;
+        }
+
+        function groupResolutionSummary(group) {
+            const resolutions = (group.resolutions || [])
+                .map(r => r.resolution)
+                .filter(r => r !== 'unknown');
+            let text = resolutions.length > 0 ? resolutions.join(' / ') : 'unknown resolution';
+            if (group.releaseCount > resolutions.length) {
+                text += ` · ${group.releaseCount} releases`;
+            }
+            return text;
+        }
+
+        function inlineMeta(meta) {
+            if (!meta || (!meta.rating && (!meta.genres || meta.genres.length === 0))) {
+                return '<span class="text-zinc-600">rating / genres unavailable</span>';
+            }
+            const rating = meta.rating
+                ? `<span class="text-amber-400 font-medium">&#9733; ${escapeHtml(meta.rating)}</span>`
+                : '<span class="text-zinc-600">no rating</span>';
+            const genres = (meta.genres && meta.genres.length > 0)
+                ? ` <span class="text-zinc-600">·</span> <span class="text-zinc-500">${escapeHtml(meta.genres.join(', '))}</span>`
+                : '';
+            return rating + genres;
+        }
+
+        function renderGroupedList(containerId, countId, groups, kind) {
+            const container = document.getElementById(containerId);
+            const countSpan = document.getElementById(countId);
+            container.innerHTML = '';
+            const releaseTotal = groups.reduce((sum, g) => sum + (g.releaseCount || 0), 0);
+            countSpan.textContent = kind === 'tv'
+                ? `${groups.length} shows · ${releaseTotal} releases`
+                : `${groups.length} movies · ${releaseTotal} releases`;
+
+            if (groups.length === 0) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-sm">No torrents found within the last 7 days.</div>';
+                return;
+            }
+
+            groups.forEach((group, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-dark-900/50 hover:bg-dark-900 border border-zinc-800/80 rounded-md px-3 py-2 transition text-xs';
+
+                const poster = kind === 'tv'
+                    ? (posterEnabled('topTv') ? posterForSeries(group.best.title) : '')
+                    : (posterEnabled('topMovies') ? posterForMovie(group.best.title) : '');
+                const summary = kind === 'tv' ? groupEpisodeSummary(group) : groupResolutionSummary(group);
+                const meta = group.best.meta;
+
+                const addBtn = kind === 'tv'
+                    ? `<button onclick="addGroupToWatchlist(${index})" title="Add to watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0 text-xs font-bold">+</button>`
+                    : '';
+                const listBtn = kind === 'tv'
+                    ? `<button onclick="openGroupShowEpisodes(${index})" title="Show all episodes" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`
+                    : `<button onclick="openGroupMovieReleases(${index})" title="Show all releases of this movie" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg></button>`;
+
+                card.innerHTML = `
+                    <div class="flex ${poster ? 'items-start' : 'items-center'} gap-2 xl:gap-3">
+                        ${poster}
+                        <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 xl:gap-3 whitespace-nowrap overflow-hidden">
+                        <span class="text-xs font-mono text-zinc-500 shrink-0 w-7">#${index + 1}</span>
+                        <a href="https://milkie.cc${group.best.href}" target="_blank" title="${escapeHtml(group.best.title)}" class="text-sm font-medium text-blue-400 hover:underline truncate flex-1 min-w-0">${escapeHtml(group.title)}${group.year ? ` <span class="text-zinc-500">(${escapeHtml(group.year)})</span>` : ''}</a>
+                        ${groupDownloadedPill(group)}
+                        <span class="text-emerald-400 font-medium shrink-0" title="Most-downloaded release">${group.best.downloaded} Dl</span>
+                        <span class="hidden md:inline-flex items-center gap-2 xl:gap-3 shrink-0">
+                            <span class="text-zinc-600">|</span><span class="text-zinc-400" title="Release groups in this row">${group.releaseCount} rel.</span>
+                        </span>
+                        <span class="hidden xl:inline-flex items-center gap-2 xl:gap-3 shrink-0">
+                            <span class="text-zinc-600">|</span><span class="text-zinc-500">${group.best.size}</span>
+                        </span>
+                        ${listBtn}
+                        ${addBtn}
+                        <button type="button" onclick="openGroupDownloadModal('${kind}', ${index})" title="Choose an episode/resolution or download all" class="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium transition shrink-0 flex items-center gap-1.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 3v12m0 0l-4-4m4 4l4-4"></path></svg><span>Download</span></button>
+                        </div>
+                        <div class="pt-0.5 text-[11px] truncate">
+                            <span class="text-zinc-400">${escapeHtml(summary)}</span>
+                            <span class="text-zinc-600"> · </span>${inlineMeta(meta)}
+                        </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function addGroupToWatchlist(index) {
+            const group = lastTvGroups[index];
+            if (group) addItemToWatchlist(group.best);
+        }
+
+        function openGroupShowEpisodes(index) {
+            const group = lastTvGroups[index];
+            if (group) openEpisodesFor(group.best.title);
+        }
+
+        function openGroupMovieReleases(index) {
+            const group = lastMovieGroups[index];
+            if (group) openMovieReleasesFor(group.best);
+        }
 
         // Highlight is active only if the episode was detected in the last 3 days.
         // Entries flagged before detection timestamps existed stay highlighted.
@@ -1442,6 +1889,10 @@
                     : `<span class="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[11px] shrink-0">S${String(entry.season).padStart(2, '0')}E${String(entry.episode).padStart(2, '0')}</span>`;
                 const dlInfo = entry.downloadedFile ? `<span class="text-zinc-500 truncate" title="${entry.downloadedFile}">&#8595; ${entry.downloadedFile.split(/[\\/]/).pop()}</span>` : '';
                 const dlErr = entry.downloadError ? `<span class="text-red-400 truncate" title="${entry.downloadError}">dl failed</span>` : '';
+                const releaseCount = (entry.downloadedReleases || []).length;
+                const dlPill = releaseCount > 0
+                    ? `<span class="downloaded-pill" title="${releaseCount} release(s) downloaded">Downloaded ${releaseCount}</span>`
+                    : '';
                 const res = entry.resolution || '1080p';
                 const resOptions = ['720p', '1080p', '2160p'].map((r) =>
                     `<option value="${r}"${r === res ? ' selected' : ''}>${r}</option>`).join('');
@@ -1454,6 +1905,8 @@
                     <select onchange="updateWatchlistEntry('${entry.id}', { resolution: this.value })" title="Preferred resolution" class="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5 text-[11px] text-zinc-300 shrink-0 focus:outline-none">${resOptions}</select>
                     <label class="flex items-center space-x-1 text-[11px] text-zinc-400 shrink-0" title="Auto-download PROPER/REPACK releases"><input type="checkbox"${properChecked} onchange="updateWatchlistEntry('${entry.id}', { autoProper: this.checked })" class="accent-emerald-600" /><span>P/R</span></label>
                     ${dlInfo}${dlErr}
+                    ${dlPill}
+                    <button onclick="downloadMissingEpisodes('${entry.id}', this)" title="Search for released episodes of this season that are not downloaded yet" class="px-2 py-1 rounded bg-emerald-800 hover:bg-emerald-700 text-emerald-100 transition shrink-0 text-[11px]">Get missing</button>
                     <button onclick="removeFromWatchlist('${entry.id}')" title="Remove from watchlist" class="px-2 py-1 rounded bg-zinc-800 hover:bg-red-700 text-zinc-300 hover:text-white transition shrink-0 text-[11px]">Remove</button>
                 `;
                 container.appendChild(card);
@@ -1506,6 +1959,33 @@
                 await fetchWatchlist();
             } catch (err) {
                 logError(err);
+            }
+        }
+
+        async function downloadMissingEpisodes(id, btn) {
+            const original = btn ? btn.textContent : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Searching...';
+            }
+            try {
+                const res = await fetch(`/api/watchlist/${id}/backfill`, { method: 'POST' });
+                const data = await res.json();
+                if (!data.success && !data.message) throw new Error(data.error || 'Backfill failed');
+                const saved = (data.downloaded || []).length;
+                const failed = (data.failed || []).length;
+                let message = data.message || (saved > 0 ? `Downloaded ${saved} missing episode(s).` : 'No missing episodes found.');
+                if (failed > 0) message += ` ${failed} failed.`;
+                showToast(message, failed > 0 && saved === 0);
+                await fetchWatchlist();
+            } catch (err) {
+                logError(err);
+                showToast(err.message, true);
+            } finally {
+                if (btn && document.body.contains(btn)) {
+                    btn.disabled = false;
+                    btn.textContent = original;
+                }
             }
         }
 
@@ -1613,8 +2093,10 @@
 
                 lastTvShows = data.tvShows || [];
                 lastMovies = data.movies || [];
-                renderList('tv-container', 'tv-count', data.tvShows);
-                renderList('movie-container', 'movie-count', data.movies);
+                lastTvGroups = data.tvGroups || [];
+                lastMovieGroups = data.movieGroups || [];
+                renderTopTv();
+                renderTopMovies();
                 if (data.watchlist) renderWatchlist(data.watchlist);
                 else await fetchWatchlist();
             } catch (err) {
@@ -1632,6 +2114,12 @@
                     const cachedPosters = JSON.parse(localStorage.getItem('milkie_posters') || 'null');
                     if (cachedPosters && typeof cachedPosters === 'object') {
                         posterPrefs = { ...POSTER_DEFAULTS, ...cachedPosters };
+                    }
+                } catch (_) { /* ignore corrupt cache */ }
+                try {
+                    const cachedGroups = JSON.parse(localStorage.getItem('milkie_grouping') || 'null');
+                    if (cachedGroups && typeof cachedGroups === 'object') {
+                        groupPrefs = { ...GROUP_DEFAULTS, ...cachedGroups };
                     }
                 } catch (_) { /* ignore corrupt cache */ }
 
@@ -1684,6 +2172,10 @@
                         posterPrefs = { ...POSTER_DEFAULTS, ...cfg.posters };
                         try { localStorage.setItem('milkie_posters', JSON.stringify(posterPrefs)); } catch (_) { /* ignore */ }
                     }
+                    if (cfg.grouping && typeof cfg.grouping === 'object') {
+                        groupPrefs = { ...GROUP_DEFAULTS, ...cfg.grouping };
+                        try { localStorage.setItem('milkie_grouping', JSON.stringify(groupPrefs)); } catch (_) { /* ignore */ }
+                    }
                     if (cfg.tokenStatus) renderTokenStatus(cfg.tokenStatus);
                 }
             } catch (err) {
@@ -1692,6 +2184,8 @@
             refreshSettingsStatus();
             syncPosterToggleButtons();
             syncPosterSettings();
+            syncGroupToggleButtons();
+            syncGroupSettings();
             loadTokenStatus();
             fetchListings();
             fetchWatchlist();

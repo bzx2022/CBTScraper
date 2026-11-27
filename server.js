@@ -3,6 +3,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const fs = require('fs');
 const path = require('path');
 const auth = require('./auth');
+const { createDownloadHistory } = require('./downloads');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +39,14 @@ const POSTER_DEFAULTS = {
 };
 let posterPrefs = { ...POSTER_DEFAULTS };
 
+// Top-20 grouping is per list and on by default. Grouping data is computed by
+// /api/scrape, so toggling it re-renders cached data without a refetch.
+const GROUP_DEFAULTS = { topTv: true, topMovies: true };
+let groupPrefs = { ...GROUP_DEFAULTS };
+
+const DOWNLOAD_HISTORY_PATH = path.join(__dirname, 'download-history.json');
+const downloadHistory = createDownloadHistory(DOWNLOAD_HISTORY_PATH);
+
 const WATCHLIST_PATH = path.join(__dirname, 'watchlist.json');
 const TORRENT_DIR = path.join(__dirname, 'torrents');
 let watchlist = [];
@@ -52,6 +61,8 @@ function loadWatchlist() {
                 if (normalizeLog(entry)) repaired = true;
             }
             if (repaired) saveWatchlist();
+            // Seed the shared history with downloads recorded before it existed.
+            downloadHistory.seedFromWatchlist(watchlist);
         }
         if (!fs.existsSync(TORRENT_DIR)) fs.mkdirSync(TORRENT_DIR, { recursive: true });
     } catch (err) {
@@ -123,14 +134,25 @@ function alreadyDownloaded(entry, season, episode, title) {
     return true;
 }
 
-function recordDownload(entry, season, episode, title) {
+function recordDownload(entry, season, episode, title, torrentId, source) {
+    const resolution = detectResolution(title);
     entry.downloadedReleases = entry.downloadedReleases || [];
     entry.downloadedReleases.push({
         tag: releaseTag(season, episode),
         title,
         proper: isProperRelease(title),
-        resolution: detectResolution(title),
+        resolution,
+        torrentId: torrentId || null,
         downloadedAt: new Date().toISOString()
+    });
+    downloadHistory.record({
+        torrentId,
+        title,
+        kind: 'tv',
+        source: source || 'auto',
+        season,
+        episode,
+        resolution
     });
 }
 
@@ -225,7 +247,7 @@ async function milkieFetch(url, { retry = true } = {}) {
     return milkieFetch(url, { retry: false });
 }
 
-async function downloadTorrentFile(torrentId, releaseName) {
+async function downloadTorrentFile(torrentId, releaseName, meta = {}) {
     const cleanKey = normalizeApiKey(torrentApiKey);
     const url = `https://milkie.cc/api/v1/torrents/${torrentId}/torrent${cleanKey ? `?key=${encodeURIComponent(cleanKey)}` : ''}`;
     const res = await milkieFetch(url);
@@ -234,6 +256,15 @@ async function downloadTorrentFile(torrentId, releaseName) {
     const safe = (releaseName || torrentId).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 150) + '.torrent';
     const dest = path.join(TORRENT_DIR, safe);
     fs.writeFileSync(dest, buf);
+    downloadHistory.record({
+        torrentId,
+        title: releaseName || torrentId,
+        kind: meta.kind || 'other',
+        source: meta.source || 'manual',
+        season: meta.season,
+        episode: meta.episode,
+        resolution: meta.resolution || detectResolution(releaseName)
+    });
     return dest;
 }
 
@@ -243,7 +274,7 @@ async function downloadTorrentFile(torrentId, releaseName) {
 function seedDownloadLog(entry) {
     if ((entry.downloadedReleases || []).length > 0) return false;
     if (entry.downloadError || !entry.downloadedFile || !entry.latest || !entry.latest.title) return false;
-    recordDownload(entry, entry.latest.season, entry.latest.episode, entry.latest.title);
+    recordDownload(entry, entry.latest.season, entry.latest.episode, entry.latest.title, entry.latest.torrentId, 'watchlist');
     return true;
 }
 
@@ -283,9 +314,12 @@ async function checkWatchlist(tvItems) {
         const { best } = selectCandidate(entry, fresh);
         if (!best) continue;
         try {
-            entry.downloadedFile = await downloadTorrentFile(best.item.torrentId, best.item.title);
+            entry.downloadedFile = await downloadTorrentFile(best.item.torrentId, best.item.title, {
+                kind: 'tv', source: 'auto', season: best.parsed.season,
+                episode: best.parsed.episode, resolution: detectResolution(best.item.title)
+            });
             entry.downloadError = null;
-            recordDownload(entry, best.parsed.season, best.parsed.episode, best.item.title);
+            recordDownload(entry, best.parsed.season, best.parsed.episode, best.item.title, best.item.torrentId);
         } catch (err) {
             entry.downloadError = err.message;
         }
@@ -485,32 +519,49 @@ async function resolveMeta(kind, name, year) {
     }
 }
 
-// Enrich already-sliced top items with rating/genres (concurrency-limited).
+// Enrich top items with rating/genres (concurrency-limited). Items that share
+// a metadata key (many releases of one show/movie) are resolved once.
 async function enrichWithMeta(items, kind, opts = {}) {
     const CONCURRENCY = opts.concurrency || 4;
     const PACE_MS = opts.paceMs != null ? opts.paceMs : 250;
-    const queue = items.slice();
+    const unique = new Map();
+    for (const item of items) {
+        if (item.meta) continue;
+        let name = null;
+        let year = null;
+        if (kind === 'series') {
+            const p = parseRelease(item.title);
+            if (p) name = p.displayName;
+        } else {
+            const p = parseMovieTitle(item.title);
+            if (p) {
+                name = p.query;
+                year = p.year;
+            }
+        }
+        if (!name) {
+            item.meta = null;
+            continue;
+        }
+        const key = metaCacheKey(kind, name, year);
+        let group = unique.get(key);
+        if (!group) {
+            group = { name, year, items: [] };
+            unique.set(key, group);
+        }
+        group.items.push(item);
+    }
+    const queue = Array.from(unique.values());
     async function worker() {
         while (queue.length > 0) {
-            const item = queue.shift();
-            let name = null;
-            let year = null;
-            if (kind === 'series') {
-                const p = parseRelease(item.title);
-                if (p) name = p.displayName;
-            } else {
-                const p = parseMovieTitle(item.title);
-                if (p) {
-                    name = p.query;
-                    year = p.year;
-                }
-            }
-            item.meta = name ? await resolveMeta(kind, name, year) : null;
+            const group = queue.shift();
+            const meta = await resolveMeta(kind, group.name, group.year);
+            for (const item of group.items) item.meta = meta;
             // Gentle pacing so we stay far under OMDb's free quota.
             await new Promise(r => setTimeout(r, PACE_MS));
         }
     }
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
     return items;
 }
 
@@ -525,6 +576,11 @@ function loadConfig() {
             if (cfg.posters && typeof cfg.posters === 'object') {
                 for (const key of Object.keys(POSTER_DEFAULTS)) {
                     if (typeof cfg.posters[key] === 'boolean') posterPrefs[key] = cfg.posters[key];
+                }
+            }
+            if (cfg.grouping && typeof cfg.grouping === 'object') {
+                for (const key of Object.keys(GROUP_DEFAULTS)) {
+                    if (typeof cfg.grouping[key] === 'boolean') groupPrefs[key] = cfg.grouping[key];
                 }
             }
             console.log(`Loaded saved config (token: ${sessionToken ? 'yes' : 'no'}, apiKey: ${torrentApiKey ? 'yes' : 'no'}, omdb: ${omdbApiKey ? 'yes' : 'no'})`);
@@ -543,7 +599,8 @@ function saveConfig() {
             sessionToken,
             torrentApiKey,
             omdbApiKey,
-            posters: posterPrefs
+            posters: posterPrefs,
+            grouping: groupPrefs
         });
     } catch (err) {
         console.error('Failed to save config.json:', err.message);
@@ -553,6 +610,130 @@ function saveConfig() {
 loadConfig();
 loadWatchlist();
 loadMetaCache();
+
+// ---- Top-20 grouping -------------------------------------------------------
+// A single show can occupy several top-20 slots (multiple episodes, or the same
+// episode from different release groups), and a movie can appear at several
+// resolutions. Grouping condenses those into one row so the list shows more
+// unique titles; the raw top 20 is still kept for the ungrouped view.
+function preferredRelease(releases) {
+    const order = ['1080p', '2160p', '720p', '480p', 'unknown'];
+    return releases.slice().sort((a, b) => {
+        const ra = order.indexOf(detectResolution(a.title));
+        const rb = order.indexOf(detectResolution(b.title));
+        if (ra !== rb) return ra - rb;
+        const pa = isProperRelease(a.title) ? 0 : 1;
+        const pb = isProperRelease(b.title) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        if (b.downloaded !== a.downloaded) return b.downloaded - a.downloaded;
+        return b.seeders - a.seeders;
+    })[0];
+}
+
+function finishGroup(group, kind) {
+    group.items.sort((a, b) => b.downloaded - a.downloaded);
+    group.best = group.items[0];
+    group.releaseCount = group.items.length;
+    group.alreadyDownloadedCount = group.items.filter(i => i.alreadyDownloaded).length;
+    group.alreadyDownloaded = group.alreadyDownloadedCount > 0;
+    group.totalDownloaded = group.items.reduce((sum, i) => sum + (i.downloaded || 0), 0);
+    group.kind = kind;
+    return group;
+}
+
+function buildTvGroups(items) {
+    const map = new Map();
+    for (const item of items) {
+        const parsed = parseRelease(item.title);
+        if (!parsed) continue;
+        let group = map.get(parsed.seriesKey);
+        if (!group) {
+            group = {
+                key: parsed.seriesKey,
+                title: parsed.displayName,
+                items: [],
+                episodesMap: new Map()
+            };
+            map.set(parsed.seriesKey, group);
+        }
+        group.items.push(item);
+        const tag = releaseTag(parsed.season, parsed.episode);
+        let episode = group.episodesMap.get(tag);
+        if (!episode) {
+            episode = { season: parsed.season, episode: parsed.episode, tag, releases: [] };
+            group.episodesMap.set(tag, episode);
+        }
+        episode.releases.push(item);
+    }
+
+    const groups = [];
+    for (const group of map.values()) {
+        finishGroup(group, 'tv');
+        const bestParsed = parseRelease(group.best.title);
+        if (bestParsed) group.title = bestParsed.displayName;
+        group.episodes = Array.from(group.episodesMap.values())
+            .sort((a, b) => (a.season - b.season) || (a.episode - b.episode));
+        for (const episode of group.episodes) {
+            episode.releases.sort((a, b) => b.downloaded - a.downloaded);
+            episode.best = preferredRelease(episode.releases);
+        }
+        group.episodeCount = group.episodes.length;
+        delete group.episodesMap;
+        groups.push(group);
+    }
+    groups.sort((a, b) => b.best.downloaded - a.best.downloaded || b.totalDownloaded - a.totalDownloaded);
+    return groups;
+}
+
+function buildMovieGroups(items) {
+    const map = new Map();
+    const order = { '2160p': 0, '1080p': 1, '720p': 2, '480p': 3, 'unknown': 4 };
+    for (const item of items) {
+        const parsed = parseMovieTitle(item.title);
+        if (!parsed) continue;
+        const key = `${normalizeTitleKey(parsed.query)}|${parsed.year || ''}`;
+        let group = map.get(key);
+        if (!group) {
+            group = {
+                key,
+                title: parsed.query,
+                year: parsed.year,
+                items: [],
+                resolutionsMap: new Map()
+            };
+            map.set(key, group);
+        }
+        group.items.push(item);
+        const resolution = detectResolution(item.title);
+        let bucket = group.resolutionsMap.get(resolution);
+        if (!bucket) {
+            bucket = { resolution, releases: [] };
+            group.resolutionsMap.set(resolution, bucket);
+        }
+        bucket.releases.push(item);
+    }
+
+    const groups = [];
+    for (const group of map.values()) {
+        finishGroup(group, 'movie');
+        const bestParsed = parseMovieTitle(group.best.title);
+        if (bestParsed) {
+            group.title = bestParsed.query;
+            group.year = bestParsed.year;
+        }
+        group.resolutions = Array.from(group.resolutionsMap.values())
+            .sort((a, b) => (order[a.resolution] ?? 9) - (order[b.resolution] ?? 9));
+        for (const bucket of group.resolutions) {
+            bucket.releases.sort((a, b) => b.downloaded - a.downloaded);
+            bucket.best = preferredRelease(bucket.releases);
+        }
+        group.resolutionCount = group.resolutions.length;
+        delete group.resolutionsMap;
+        groups.push(group);
+    }
+    groups.sort((a, b) => b.best.downloaded - a.best.downloaded || b.totalDownloaded - a.totalDownloaded);
+    return groups;
+}
 
 // Scrape function for category (1 = Movies, 2 = TV Shows)
 async function scrapeCategory(categoryId) {
@@ -581,11 +762,19 @@ async function scrapeCategory(categoryId) {
         }
     }
 
-    // Sort by amount downloaded descending, pick top 20, then enrich with ratings.
     items.sort((a, b) => b.downloaded - a.downloaded);
     const top = items.slice(0, 20);
-    await enrichWithMeta(top, categoryId === 2 ? 'series' : 'movie');
-    return top;
+    // Group the whole 7-day window, then keep the 20 most popular unique titles.
+    const groups = (categoryId === 2 ? buildTvGroups(items) : buildMovieGroups(items)).slice(0, 20);
+
+    // Enrich raw rows and one representative per group. Metadata is deduped by
+    // title/year, so overlapping representatives cost nothing extra.
+    const enrichTargets = top.slice();
+    for (const group of groups) {
+        if (!enrichTargets.includes(group.best)) enrichTargets.push(group.best);
+    }
+    await enrichWithMeta(enrichTargets, categoryId === 2 ? 'series' : 'movie');
+    return { items: top, groups };
 }
 
 // Map one raw milkie torrent object to the SPA item shape (shared by scrape + search).
@@ -613,6 +802,8 @@ function buildTorrentItem(t) {
         downloaded: t.downloaded || t.completed || t.times_completed || 0,
         seeders: t.seeders || t.seed || 0,
         leechers: t.leechers || t.leech || 0,
+        resolution: detectResolution(fullTitle),
+        alreadyDownloaded: downloadHistory.has(t.id, fullTitle),
         meta: null
     };
 }
@@ -691,6 +882,7 @@ app.get('/api/config', (req, res) => {
         apiKey: torrentApiKey,
         omdbKey: omdbApiKey,
         posters: posterPrefs,
+        grouping: groupPrefs,
         tokenStatus: auth.tokenStatus(sessionToken)
     });
 });
@@ -703,6 +895,67 @@ app.post('/api/set-posters', (req, res) => {
     }
     saveConfig();
     res.json({ success: true, posters: posterPrefs });
+});
+
+// Partial update of the top-20 grouping toggles.
+app.post('/api/set-grouping', (req, res) => {
+    const body = req.body || {};
+    for (const key of Object.keys(GROUP_DEFAULTS)) {
+        if (typeof body[key] === 'boolean') groupPrefs[key] = body[key];
+    }
+    saveConfig();
+    res.json({ success: true, grouping: groupPrefs });
+});
+
+// Remember a manual browser download so "Downloaded" pills appear everywhere.
+app.post('/api/mark-downloaded', (req, res) => {
+    const body = req.body || {};
+    const torrentId = body.torrentId ? String(body.torrentId) : '';
+    const title = String(body.title || '').trim();
+    if (!torrentId && !title) {
+        return res.status(400).json({ success: false, error: 'torrentId or title is required' });
+    }
+    const kind = body.kind === 'movie' ? 'movie' : (body.kind === 'tv' ? 'tv' : 'other');
+    const added = downloadHistory.record({
+        torrentId,
+        title,
+        kind,
+        source: 'manual',
+        resolution: body.resolution || detectResolution(title)
+    });
+    res.json({ success: true, added });
+});
+
+// Download several releases server-side (one file per episode/resolution) into
+// torrents/, where the RSS bridge picks them up for uTorrent.
+app.post('/api/download-batch', async (req, res) => {
+    const body = req.body || {};
+    const kind = body.kind === 'movie' ? 'movie' : 'tv';
+    const items = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
+    if (items.length === 0) {
+        return res.status(400).json({ success: false, error: 'items array is required' });
+    }
+    const saved = [];
+    const failed = [];
+    for (const it of items) {
+        const torrentId = String(it && it.torrentId || '').trim();
+        const title = String(it && it.title || '').trim();
+        if (!torrentId) {
+            failed.push({ title, error: 'missing torrentId' });
+            continue;
+        }
+        try {
+            const file = await downloadTorrentFile(torrentId, title, {
+                kind,
+                source: 'bulk',
+                resolution: it.resolution || detectResolution(title)
+            });
+            saved.push({ torrentId, title, file: path.basename(file) });
+        } catch (err) {
+            failed.push({ torrentId, title, error: err.message });
+        }
+    }
+    res.json({ success: saved.length > 0, saved, failed });
 });
 
 // Session expiry for Settings, plus a manual renewal hook.
@@ -951,6 +1204,9 @@ app.get('/api/latest', async (req, res) => {
         const pages = Math.max(1, Math.ceil(entry.items.length / LATEST_PAGE_SIZE));
         const pi = Math.min(requested, pages - 1);
         const results = entry.items.slice(pi * LATEST_PAGE_SIZE, pi * LATEST_PAGE_SIZE + LATEST_PAGE_SIZE);
+        for (const item of results) {
+            item.alreadyDownloaded = downloadHistory.has(item.torrentId, item.title);
+        }
 
         // Movies get the same IMDb rating/genre line as the top-20 list.
         if (category === 1) {
@@ -983,41 +1239,49 @@ const showCache = new Map();
 const SHOW_TTL_MS = 15 * 60 * 1000;
 const SHOW_PAGE_SIZE = 50;
 
+async function getShowItems(rawName) {
+    const key = rawName.toLowerCase();
+    const now = Date.now();
+    const cached = showCache.get(key);
+    if (cached && (now - cached.fetchedAt) < SHOW_TTL_MS) return cached.items;
+
+    // Pull milkie search pages (100 each, cap 5) then keep exact series matches.
+    const all = [];
+    for (let spi = 0; spi < 5; spi++) {
+        const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(rawName)}&oby=created_at&odir=desc&pi=${spi}&ps=100`;
+        const apiRes = await milkieFetch(apiUrl);
+        if (!apiRes.ok) {
+            throw new Error(`Show fetch failed "${rawName}" pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
+        }
+        const data = await apiRes.json();
+        const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
+        all.push(...list);
+        if (list.length < 100) break;
+    }
+    const items = all
+        .map(buildTorrentItem)
+        .filter(item => {
+            const p = parseRelease(item.title);
+            return p && p.seriesKey === key;
+        })
+        .sort((a, b) => b.createdAtTime - a.createdAtTime);
+    showCache.set(key, { fetchedAt: now, items });
+    return items;
+}
+
 // All released episodes for one show, newest first: GET /api/show?name=President Curtis&pi=0
 app.get('/api/show', async (req, res) => {
     try {
         const rawName = String(req.query.name || '').trim();
         const pi = Math.max(0, parseInt(req.query.pi || '0', 10) || 0);
         if (!rawName) return res.status(400).json({ success: false, error: 'name parameter is required' });
-        const key = rawName.toLowerCase();
         const now = Date.now();
-
-        let items = null;
-        const cached = showCache.get(key);
-        if (cached && (now - cached.fetchedAt) < SHOW_TTL_MS) {
-            items = cached.items;
-        } else {
-            // Pull milkie search pages (100 each, cap 5) then keep exact series matches.
-            const all = [];
-            for (let spi = 0; spi < 5; spi++) {
-                const apiUrl = `https://milkie.cc/api/v1/torrents?query=${encodeURIComponent(rawName)}&oby=created_at&odir=desc&pi=${spi}&ps=100`;
-                const apiRes = await milkieFetch(apiUrl);
-                if (!apiRes.ok) {
-                    throw new Error(`Show fetch failed "${rawName}" pi=${spi}: status ${apiRes.status} - ${await apiRes.text()}`);
-                }
-                const data = await apiRes.json();
-                const list = Array.isArray(data) ? data : (data.torrents || data.data || data.results || data.items || []);
-                all.push(...list);
-                if (list.length < 100) break;
-            }
-            items = all
-                .map(buildTorrentItem)
-                .filter(item => {
-                    const p = parseRelease(item.title);
-                    return p && p.seriesKey === key;
-                })
-                .sort((a, b) => b.createdAtTime - a.createdAtTime);
-            showCache.set(key, { fetchedAt: now, items });
+        const existing = showCache.get(rawName.toLowerCase());
+        const wasCached = !!existing && (now - existing.fetchedAt) < SHOW_TTL_MS;
+        const items = await getShowItems(rawName);
+        // Refresh flags on cached lists: another process may have downloaded.
+        for (const item of items) {
+            item.alreadyDownloaded = downloadHistory.has(item.torrentId, item.title);
         }
 
         const pages = Math.max(1, Math.ceil(items.length / SHOW_PAGE_SIZE));
@@ -1028,11 +1292,120 @@ app.get('/api/show', async (req, res) => {
             total: items.length,
             page,
             pages,
-            cached: !!cached && (now - cached.fetchedAt) < SHOW_TTL_MS,
+            cached: wasCached,
             results: items.slice(page * SHOW_PAGE_SIZE, page * SHOW_PAGE_SIZE + SHOW_PAGE_SIZE)
         });
     } catch (err) {
         console.error('Show error:', err);
+        res.status(500).json({ success: false, error: err.stack || err.message });
+    }
+});
+
+// Has any download (watchlist, bridge, bulk or manual) already covered this
+// episode? Shared-history records may predate the per-episode fields, so fall
+// back to parsing the release title.
+function historyHasEpisode(seriesKey, season, episode) {
+    downloadHistory.refresh();
+    return downloadHistory.records().some((r) => {
+        if (r.kind !== 'tv') return false;
+        if (r.season != null && r.episode != null) {
+            return r.season === season && r.episode === episode;
+        }
+        const p = parseRelease(r.title);
+        return !!p && p.seriesKey === seriesKey && p.season === season && p.episode === episode;
+    });
+}
+
+// Backfill a watchlist show's current season: find every released episode that
+// is not in the download log yet and grab one preferred release per episode.
+app.post('/api/watchlist/:id/backfill', async (req, res) => {
+    const entry = watchlist.find(e => e.id === req.params.id);
+    if (!entry) return res.status(404).json({ success: false, error: 'Entry not found' });
+    try {
+        const season = entry.season;
+        const items = await getShowItems(entry.displayName);
+        const preferred = entryResolution(entry);
+
+        // Group candidates by episode, skipping anything already in the log.
+        const byEpisode = new Map();
+        for (const item of items) {
+            const parsed = parseRelease(item.title);
+            if (!parsed || parsed.season !== season) continue;
+            if (alreadyDownloaded(entry, parsed.season, parsed.episode, item.title)) continue;
+            if (historyHasEpisode(entry.seriesKey, parsed.season, parsed.episode)) continue;
+            const tag = releaseTag(parsed.season, parsed.episode);
+            if (!byEpisode.has(tag)) {
+                byEpisode.set(tag, { season: parsed.season, episode: parsed.episode, tag, candidates: [] });
+            }
+            byEpisode.get(tag).candidates.push(item);
+        }
+
+        if (byEpisode.size === 0) {
+            return res.json({
+                success: true,
+                season,
+                downloaded: [],
+                failed: [],
+                message: `No missing episodes found for S${String(season).padStart(2, '0')}.`
+            });
+        }
+
+        const order = ['1080p', '2160p', '720p', '480p', 'unknown'];
+        const episodes = Array.from(byEpisode.values())
+            .sort((a, b) => a.episode - b.episode);
+
+        const downloaded = [];
+        const failed = [];
+        for (const episode of episodes) {
+            // Preferred resolution first, then PROPER, then popularity.
+            episode.candidates.sort((a, b) => {
+                const ra = detectResolution(a.title) === preferred ? 0 : 1;
+                const rb = detectResolution(b.title) === preferred ? 0 : 1;
+                if (ra !== rb) return ra - rb;
+                const po = order.indexOf(detectResolution(a.title)) - order.indexOf(detectResolution(b.title));
+                if (po !== 0) return po;
+                const pa = isProperRelease(a.title) ? 0 : 1;
+                const pb = isProperRelease(b.title) ? 0 : 1;
+                if (pa !== pb) return pa - pb;
+                if (b.downloaded !== a.downloaded) return b.downloaded - a.downloaded;
+                return b.seeders - a.seeders;
+            });
+            const pick = episode.candidates[0];
+            try {
+                const file = await downloadTorrentFile(pick.torrentId, pick.title, {
+                    kind: 'tv',
+                    source: 'backfill',
+                    season: episode.season,
+                    episode: episode.episode,
+                    resolution: detectResolution(pick.title)
+                });
+                entry.downloadedFile = file;
+                entry.downloadError = null;
+                recordDownload(entry, episode.season, episode.episode, pick.title, pick.torrentId, 'backfill');
+                downloaded.push({
+                    season: episode.season,
+                    episode: episode.episode,
+                    tag: episode.tag,
+                    title: pick.title,
+                    resolution: detectResolution(pick.title)
+                });
+            } catch (err) {
+                entry.downloadError = err.message;
+                failed.push({ tag: episode.tag, title: pick.title, error: err.message });
+            }
+        }
+        saveWatchlist();
+        res.json({
+            success: downloaded.length > 0 || failed.length === 0,
+            season,
+            downloaded,
+            failed,
+            message: downloaded.length > 0
+                ? `Downloaded ${downloaded.length} missing episode(s) of S${String(season).padStart(2, '0')}.`
+                : 'No episodes could be downloaded.'
+        });
+    } catch (err) {
+        console.error('Backfill error:', err);
         res.status(500).json({ success: false, error: err.stack || err.message });
     }
 });
@@ -1084,6 +1457,10 @@ app.get('/api/movie', async (req, res) => {
             movieCache.set(key, { fetchedAt: now, items });
         }
 
+        for (const item of items) {
+            item.alreadyDownloaded = downloadHistory.has(item.torrentId, item.title);
+        }
+
         const pages = Math.max(1, Math.ceil(items.length / MOVIE_PAGE_SIZE));
         const page = Math.min(pi, pages - 1);
         res.json({
@@ -1104,17 +1481,19 @@ app.get('/api/movie', async (req, res) => {
 
 app.get('/api/scrape', async (req, res) => {
     try {
-        const [tvShows, movies] = await Promise.all([
+        const [tv, movies] = await Promise.all([
             scrapeCategory(2),
             scrapeCategory(1)
         ]);
 
-        await checkWatchlist(tvShows);
+        await checkWatchlist(tv.items);
 
         res.json({
             success: true,
-            tvShows,
-            movies,
+            tvShows: tv.items,
+            movies: movies.items,
+            tvGroups: tv.groups,
+            movieGroups: movies.groups,
             watchlist
         });
     } catch (err) {

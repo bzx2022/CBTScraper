@@ -13,6 +13,21 @@ exposes new watchlist episodes as a legacy-compatible RSS feed for
 - **Top-20 listings** — TV Shows and Movies from the last 7 days, sorted by
   download count, each in its own scrollable box (single-line rows with size,
   seeders/leechers, age, and direct `.torrent` download button).
+- **Grouped top 20** — duplicate top-20 rows are condensed into one row, freeing
+  slots for more unique titles. Multiple episodes of one show, the same episode
+  from different release groups, and a movie at several resolutions each become
+  a single listing with an episode/resolution summary underneath. Grouping is
+  computed across the whole 7-day window on the server; the header stack icon
+  and Settings → Appearance toggle it per list without a refetch.
+- **Group download picker** — the Download button on a grouped row opens a
+  picker with every release and a **Download all** action. Download all saves
+  one preferred release per episode (TV) or per resolution (movie) to
+  `torrents/`, where the RSS bridge hands them to uTorrent.
+- **Downloaded badges** — every listing already downloaded (by the watchlist
+  poller, a bulk download, a backfill, or a manual click) shows a green
+  **Downloaded** pill. Grouped rows show a count when only some releases in the
+  group are downloaded. A shared, git-ignored `download-history.json` keeps the
+  SPA and the RSS bridge in sync across restarts.
 - **Latest (48h) listings** — TV and movie releases from the last 48 hours,
   paged 100 at a time. TV rows can be added to the watchlist or expanded into
   the show's full episode list; movie rows show the IMDb rating/genre line.
@@ -46,6 +61,9 @@ exposes new watchlist episodes as a legacy-compatible RSS feed for
   (720p/1080p/2160p, default 1080p) with a 24-hour fallback when the preferred
   resolution never appears, plus a per-show **PROPER/REPACK** auto-download
   toggle. Repeat releases of an episode you already downloaded are skipped.
+  **Get missing** searches milkie for the entry's current season and downloads
+  the best release of every already-released episode that is not in the
+  download history yet, so a show added mid-season catches up in one click.
 - **Auto-updater** — checks GitHub Releases at startup and daily; Settings →
   Updates installs a newer release in place (user data is preserved) and then
   asks for a restart.
@@ -90,11 +108,12 @@ expired token is rejected with the reason), and an empty Torrent API Key is
 filled automatically from the session response.
 
 Then click **Fetch Listings**. Keys persist in `config.json` and
-`localStorage`. Poster toggles live in **Settings → Appearance** and in each
-list header.
+`localStorage`. Poster and grouping toggles live in **Settings → Appearance**
+and in each list header.
 
 > Local-only app: `config.json`, `watchlist.json`, `ratings-cache.json`,
-> `torrents/` and `torrents_archive/` are git-ignored and never committed.
+> `download-history.json`, `torrents/` and `torrents_archive/` are git-ignored
+> and never committed.
 
 ## RSS bridge setup (uTorrent 2.2.1)
 
@@ -144,13 +163,15 @@ release's notes automatically. It can be reopened any time from
 ## Project layout
 
 ```
-server.js              SPA backend (scrape proxy, enrichment, watchlist API)
+server.js              SPA backend (scrape proxy, enrichment, grouping, watchlist API)
 auth.js                Shared JWT decode / renewal helpers (SPA + bridge)
+downloads.js           Shared download-history store (SPA + bridge)
 updater.js             GitHub Releases updater (check / download / apply)
 public/index.html      SPA frontend (dark UI, modals, error log)
 config.json            Local secrets (git-ignored, auto-created)
 watchlist.json         Watchlist state (git-ignored)
 ratings-cache.json     OMDb metadata cache (git-ignored)
+download-history.json  Downloads recorded by the SPA + bridge (git-ignored)
 torrents/              Downloaded .torrent files (git-ignored)
 torrents_archive/      Torrents already served to uTorrent (git-ignored)
 Install.ps1            One-shot installer (deps + Windows Service)
@@ -169,7 +190,7 @@ rss-bridge/
 
 | Method | Route                  | Purpose |
 |--------|------------------------|---------|
-| GET    | `/api/scrape`          | Top-20 TV + movies (with `meta`), watchlist check + auto-download |
+| GET    | `/api/scrape`          | Top-20 TV + movies (with `meta`), grouped top-20 (`tvGroups`/`movieGroups`), watchlist check + auto-download |
 | GET    | `/api/latest`          | Latest 48h releases, 100/page (`?category=1\|2&pi=N`); movies include `meta` |
 | GET    | `/api/search`          | Full-text milkie search (`?query=…`) |
 | GET    | `/api/show`            | All episodes of a series, 50/page (`?name=…&pi=N`) |
@@ -179,13 +200,17 @@ rss-bridge/
 | POST   | `/api/watchlist/:id`   | Update entry prefs (`{ resolution, autoProper }`) |
 | DELETE | `/api/watchlist/:id`   | Remove entry |
 | POST   | `/api/watchlist/:id/ack` | Mark latest episode watched |
+| POST   | `/api/watchlist/:id/backfill` | Download every released but missing episode of the entry's season |
 | POST   | `/api/set-cookie`      | Validate + save auth token; auto-fills an empty API key |
 | POST   | `/api/set-apikey`      | Save torrent API key |
 | POST   | `/api/set-omdbkey`     | Save OMDb key |
 | POST   | `/api/set-posters`     | Update poster toggles (partial `{ topTv: true, … }`) |
+| POST   | `/api/set-grouping`    | Update top-20 grouping toggles (partial `{ topTv: true, … }`) |
+| POST   | `/api/mark-downloaded` | Record a browser download so **Downloaded** pills appear (`{ torrentId, title, kind, resolution }`) |
+| POST   | `/api/download-batch`  | Save several torrents server-side (`{ kind, items: [{ torrentId, title, resolution }] }`) |
 | GET    | `/api/poster`          | 302 to a cached OMDb image or the placeholder (`?kind=series\|movie&name=…&year=…&size=thumb\|preview\|full`) |
 | GET    | `/api/token/status`    | Token expiry (`expiresAt`, `daysLeft`, `expired`, `needsRefresh`) |
 | POST   | `/api/token/refresh`   | Renew the session now (`{ force: true }`) |
-| GET    | `/api/config`          | Saved credential status, poster toggles, token expiry |
+| GET    | `/api/config`          | Saved credential status, poster + grouping toggles, token expiry |
 | GET    | `/api/update/check`    | Compare local version with the latest GitHub release |
 | POST   | `/api/update/apply`    | Download and install the latest release |

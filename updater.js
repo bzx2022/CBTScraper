@@ -15,7 +15,7 @@ const API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`;
 // Never overwritten by an update: secrets, personal state, caches,
 // downloads, dependencies, VCS metadata, service binaries, past packages.
 const PRESERVED_TOP_LEVEL = new Set([
-    'config.json', 'watchlist.json', 'ratings-cache.json',
+    'config.json', 'watchlist.json', 'ratings-cache.json', 'download-history.json',
     'torrents', 'torrents_archive', 'node_modules', '.git',
     'dist', 'update-backup', '*.log'
 ]);

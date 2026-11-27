@@ -8,7 +8,7 @@ $StageDir = Join-Path ([System.IO.Path]::GetTempPath()) ("cbtscraper-stage-" + [
 $ZipPath = Join-Path $DistDir "CBTScraper-$version.zip"
 
 $files = @(
-    'server.js', 'auth.js', 'updater.js', 'package.json', 'package-lock.json',
+    'server.js', 'auth.js', 'updater.js', 'downloads.js', 'package.json', 'package-lock.json',
     'start.ps1', 'Install.ps1', 'StartCBTScraper.bat', 'RestartRSSBridge.bat',
     'README.md', 'RSS Service Install instructions.txt'
 )

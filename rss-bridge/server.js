@@ -23,6 +23,7 @@ const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 const auth = require('../auth');
+const { createDownloadHistory } = require('../downloads');
 
 const HOST = '127.0.0.1';
 const PORT = process.env.RSS_PORT || 8080;
@@ -36,6 +37,8 @@ const ARCHIVE_DIR = path.join(ROOT_DIR, 'torrents_archive');
 const CONFIG_PATH = path.join(ROOT_DIR, 'config.json');
 const WATCHLIST_PATH = path.join(ROOT_DIR, 'watchlist.json');
 const DB_PATH = path.join(__dirname, 'db.json');
+const DOWNLOAD_HISTORY_PATH = path.join(ROOT_DIR, 'download-history.json');
+const downloadHistory = createDownloadHistory(DOWNLOAD_HISTORY_PATH);
 
 for (const dir of [TORRENT_DIR, ARCHIVE_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -114,14 +117,25 @@ function alreadyDownloaded(entry, season, episode, title) {
   return true;
 }
 
-function recordDownload(entry, season, episode, title) {
+function recordDownload(entry, season, episode, title, torrentId) {
+  const resolution = detectResolution(title);
   entry.downloadedReleases = entry.downloadedReleases || [];
   entry.downloadedReleases.push({
     tag: releaseTag(season, episode),
     title,
     proper: isProperRelease(title),
-    resolution: detectResolution(title),
+    resolution,
+    torrentId: torrentId || null,
     downloadedAt: new Date().toISOString(),
+  });
+  downloadHistory.record({
+    torrentId,
+    title,
+    kind: 'tv',
+    source: 'auto',
+    season,
+    episode,
+    resolution,
   });
 }
 
@@ -236,6 +250,8 @@ async function pollWatchlistOnce() {
     const torrentApiKey = normalizeApiKey(cfg.torrentApiKey);
     const watchlist = readJsonSafe(WATCHLIST_PATH, []);
     if (!Array.isArray(watchlist) || watchlist.length === 0) return;
+    // Sync pre-existing watchlist downloads into the shared history file.
+    downloadHistory.seedFromWatchlist(watchlist);
     if (!sessionToken) {
       console.log('[bridge] Skipping poll: no auth token in config.json yet.');
       return;
@@ -257,7 +273,7 @@ async function pollWatchlistOnce() {
       if (!entry || !entry.seriesKey) continue;
       // One-time migration for entries flagged before the download log existed.
       if ((entry.downloadedReleases || []).length === 0 && !entry.downloadError && entry.downloadedFile && entry.latest && entry.latest.title) {
-        recordDownload(entry, entry.latest.season, entry.latest.episode, entry.latest.title);
+        recordDownload(entry, entry.latest.season, entry.latest.episode, entry.latest.title, entry.latest.torrentId);
         watchlistChanged = true;
       }
       // Repair legacy log records missing the resolution field.
@@ -309,7 +325,7 @@ async function pollWatchlistOnce() {
 
       entry.downloadedFile = path.join(TORRENT_DIR, safeName);
       entry.downloadError = null;
-      recordDownload(entry, best.parsed.season, best.parsed.episode, best.title);
+      recordDownload(entry, best.parsed.season, best.parsed.episode, best.title, best.raw.id);
       watchlistChanged = true;
     }
     if (watchlistChanged) {
